@@ -46,14 +46,24 @@
   <nav class="max-w-7xl mx-auto w-full px-4 sm:px-6 mb-4 mt-2">
     <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-200 flex flex-col xl:flex-row gap-4 justify-between items-center relative">
       
-      <div class="flex items-center gap-3 w-full xl:w-[350px] justify-start shrink-0">
+<!-- [UPDATE] Barra de botones agrupada por el principio de Proximidad -->
+      <div class="flex items-center gap-2 w-full xl:w-[350px] justify-start shrink-0">
+          
+          <!-- BOTÓN REFRESCAR EXISTENTE (Front-end) -->
           <button onclick="cargarDatosDesdeCache()" title="Refrescar Datos" class="w-10 h-10 bg-gray-100 border border-gray-300 rounded-xl flex items-center justify-center hover:bg-gray-200 hover:text-primary text-gray-600 transition-all shadow-sm shrink-0">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
           </button>
           
-          <div id="container-busqueda" class="relative group w-full h-10">
+          <!-- NUEVO BOTÓN SINCRONIZAR (Back-end) -->
+          <button id="btn-sync-global" onclick="sincronizarBackend()" title="Sincronizar toda la base de datos" class="group h-10 px-3 sm:px-4 bg-white border border-blue-200 text-primary font-bold text-[11px] sm:text-xs rounded-xl flex items-center justify-center hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm shrink-0 gap-2">
+              <svg id="icon-sync-global" class="w-4 h-4 text-blue-500 transition-transform duration-500 group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path></svg>
+              <span id="text-sync-global" class="hidden sm:block uppercase tracking-wider">Sync BD</span>
+          </button>
+          
+          <!-- BUSCADOR EXISTENTE -->
+          <div id="container-busqueda" class="relative group w-full h-10 ml-1">
             <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-primary"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></span>
-            <input type="text" id="buscador-nombre" placeholder="Buscar chofer, tractor, semi o UTE..." class="w-full h-full bg-gray-50 border border-gray-200 text-primary font-bold text-xs sm:text-sm rounded-xl pl-9 pr-3 focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all outline-none" oninput="filtrarTabla()" autocomplete="off">
+            <input type="text" id="buscador-nombre" placeholder="Buscar chofer, tractor, semi..." class="w-full h-full bg-gray-50 border border-gray-200 text-primary font-bold text-xs sm:text-sm rounded-xl pl-9 pr-3 focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all outline-none" oninput="filtrarTabla()" autocomplete="off">
           </div>
       </div>
 
@@ -132,6 +142,52 @@
   </div>
 
   <script>
+
+    // --- [NUEVO] SINCRONIZACIÓN DE BACKEND ---
+window.sincronizarBackend = function() {
+    const btn = document.getElementById('btn-sync-global');
+    const icon = document.getElementById('icon-sync-global');
+    const text = document.getElementById('text-sync-global');
+
+    // 1. Feedback Visual Inmediato (Gestalt)
+    btn.disabled = true;
+    btn.classList.add('bg-gray-100', 'text-gray-400', 'cursor-not-allowed', 'border-gray-200');
+    btn.classList.remove('bg-white', 'text-primary', 'border-blue-200', 'hover:bg-blue-50');
+    icon.classList.add('animate-spin', 'text-gray-400');
+    icon.classList.remove('text-blue-500');
+    if (text) text.innerText = "PROCESANDO...";
+    mostrarCargando(true); // Activa el loader global que ya tienes
+
+    // 2. Fetch al Backend
+    fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sincronizarTotal' })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if(res.success) {
+            showToast("Base de datos sincronizada exitosamente.", "success");
+            // 3. Autocargar los datos nuevos para que el usuario no tenga que hacer doble clic
+            cargarDatosDesdeCache(); 
+        } else {
+            showToast(res.error || "Error al sincronizar en el servidor.", "error");
+            mostrarCargando(false);
+        }
+    })
+    .catch(err => {
+        showToast("Error de red intentando sincronizar: " + err.message, "error");
+        mostrarCargando(false);
+    })
+    .finally(() => {
+        // 4. Restaurar el botón a su estado original
+        btn.disabled = false;
+        btn.classList.remove('bg-gray-100', 'text-gray-400', 'cursor-not-allowed', 'border-gray-200');
+        btn.classList.add('bg-white', 'text-primary', 'border-blue-200', 'hover:bg-blue-50');
+        icon.classList.remove('animate-spin', 'text-gray-400');
+        icon.classList.add('text-blue-500');
+        if (text) text.innerText = "SYNC BD";
+    });
+};
 // --- [TAG: CONEXIÓN BACKEND EXTERNO (FETCH)] ---
     const API_URL = "https://script.google.com/macros/s/AKfycbzqk-ag2kmaEsGrScmN4s8SPjpwwEybyuF7Fy_vad8fiGuF_rbDsU5Iw_bZO3WvKrY/exec"; 
     
