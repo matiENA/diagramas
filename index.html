@@ -229,10 +229,17 @@ window.sincronizarBackend = function() {
       "personal activo", "chofer", "choferes", "vacante", "-", "1"
     ]);
 
-    // --- [TAG: INIT] ---
+// --- [TAG: INIT] ---
     document.addEventListener('DOMContentLoaded', () => { 
         document.getElementById('nav-fecha-contexto').value = fechaGlobalContexto;
+        
+        // Carga inicial (Con loader visual, para que el usuario sepa que arranca)
         cargarDatosDesdeCache(); 
+        
+        // Polling Silencioso: Se ejecuta cada 45 segundos (45000 ms)
+        // ⚠️ Nota de Cuotas: No lo bajes a menos de 30 segundos o Google Apps Script bloqueará tu IP 
+        // por "Too Many Requests" si tienes varias pestañas abiertas.
+        setInterval(sincronizacionSilenciosa, 45000); 
     });
 
 document.addEventListener('click', (e) => {
@@ -593,6 +600,98 @@ function cargarDatosDesdeCache() {
         }
     })
     .catch(err => mostrarErrorGlobal(err.message));
+}
+
+// --- [NUEVO] AUTO-REFRESH SILENCIOSO SIN BLINK ---
+function sincronizacionSilenciosa() {
+    // 1. SAFEGUARD: Si el usuario está escribiendo en un input, editando un modal, 
+    // o usando un select, ABORTAMOS el renderizado visual para no cortarle la acción.
+    const elementoActivo = document.activeElement;
+    const isEditing = elementoActivo.tagName === 'INPUT' || 
+                      elementoActivo.tagName === 'SELECT' || 
+                      !document.getElementById('modal-editor').classList.contains('hidden');
+    
+    if (isEditing) return; // Espera al siguiente ciclo
+
+    // 2. Fetch en segundo plano (Sin mostrarCargando)
+    Promise.all([
+        fetch(`${API_URL}?action=obtenerDiagramasCacheados`).then(res => res.text()),
+        fetch(`${API_URL}?action=obtenerTDs`).then(res => res.json())
+    ])
+    .then(([jsonStringDiagramas, dataTDs]) => {
+        try { 
+            // 3. CAPTURAR EL ESTADO ACTUAL DEL SCROLL Y HOVER
+            const contenedorScrollSemanal = document.querySelector('.overflow-x-auto.custom-scrollbar');
+            const contenedorScrollLateral = document.getElementById('contenedor-filtros-lateral');
+            
+            let scrollSemanalLeft = contenedorScrollSemanal ? contenedorScrollSemanal.scrollLeft : 0;
+            let scrollSemanalTop = contenedorScrollSemanal ? contenedorScrollSemanal.scrollTop : 0;
+            let scrollLateralTop = contenedorScrollLateral ? contenedorScrollLateral.scrollTop : 0;
+            let scrollGlobalTop = window.scrollY;
+
+            // 4. Actualizar variables globales (Igual que tu función original)
+            window.tdGlobalData = {
+                campo: dataTDs.campo || {}, infinia: dataTDs.infinia || {},
+                liviano: dataTDs.liviano || {}, euro: dataTDs.euro || {},
+                estados: dataTDs.estados || {}, extra: dataTDs.codigosExtra || {}
+            };
+
+            const data = typeof jsonStringDiagramas === 'string' ? JSON.parse(jsonStringDiagramas) : jsonStringDiagramas;
+            datosGlobales = (data.diagramas || []).filter(c => {
+                if (!c.nom) return false;
+                let nombreLimpio = String(c.nom).trim().toLowerCase();
+                return !NOMBRES_IGNORADOS.has(nombreLimpio) && nombreLimpio.length > 2;
+            }).map(c => {
+                c._safeId = "drv_" + c.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+                return c;
+            });
+            
+            const normalizarClaves = (obj) => {
+                let objNormalizado = {};
+                for (let k in obj) {
+                    if (k) {
+                        let llaveLimpia = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                        objNormalizado[llaveLimpia] = obj[k];
+                    }
+                }
+                return objNormalizado;
+            };
+
+            docsGlobales = normalizarClaves(data.documentos || {});
+            habsGlobales = normalizarClaves(data.habilitaciones || {});
+            certsGlobales = normalizarClaves(data.certificados || {});
+            kmsGlobales = normalizarClaves(data.kilometros || {});
+            dnisGlobales = normalizarClaves(data.dnis || {});
+            telefonosGlobales = normalizarClaves(data.telefonos || {});
+            historialGlobal = normalizarClaves(data.observaciones || {});
+            aptosGlobales = normalizarClaves(data.aptosMedicos || {});
+            viajesGlobales = normalizarClaves(data.viajesCampo || {});
+            fotosGlobales = data.fotosImgur || {};
+
+            // 5. RENDERIZAR DOM A LA VELOCIDAD DE LA LUZ
+            filtrarTabla(); 
+
+            // 6. DEVOLVER EL SCROLL EXACTAMENTE A DONDE ESTABA (Evita el "salto")
+            setTimeout(() => {
+                if(contenedorScrollSemanal) {
+                    const nuevoContenedor = document.querySelector('.overflow-x-auto.custom-scrollbar');
+                    if(nuevoContenedor) {
+                        nuevoContenedor.scrollLeft = scrollSemanalLeft;
+                        nuevoContenedor.scrollTop = scrollSemanalTop;
+                    }
+                }
+                if(contenedorScrollLateral) {
+                    const nuevoLateral = document.getElementById('contenedor-filtros-lateral');
+                    if(nuevoLateral) nuevoLateral.scrollTop = scrollLateralTop;
+                }
+                window.scrollTo(0, scrollGlobalTop);
+            }, 0); // Ejecución inmediata tras el repintado del DOM
+
+        } catch (e) { 
+            console.warn("Fallo silencioso en background fetch:", e);
+        }
+    })
+    .catch(err => console.warn("Error de red en background:", err));
 }
 
 function filtrarTabla() {
