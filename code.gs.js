@@ -51,12 +51,14 @@ function doPost(e) {
       respuesta = guardarEstadoEntrega(payload.dni, payload.mes, payload.tdId, payload.estado);
       
     } else if (payload.action === 'toggleEstadoTD') { 
-      // 👉 MODIFICADO: Ahora recibe también codigosExtra
       respuesta = guardarEstadoCheckboxTD(payload.tdId, payload.estado, payload.codigosExtra);
       
     } else if (payload.action === 'actualizarExtraTD') { 
-      // 👉 NUEVO: Ruta para guardar los dígitos automáticamente
       respuesta = guardarDatosExtraBackend(payload.tdId, payload.valores);
+      
+    // 👉 NUEVO: Endpoint para la Sincronización Total (Botón del Front-End)
+    } else if (payload.action === 'sincronizarTotal') {
+      respuesta = ejecutarSincronizacionTotal();
     }
 
   } catch (error) {
@@ -66,49 +68,68 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(respuesta)).setMimeType(ContentService.MimeType.JSON);
 }
 
+
+function ejecutarSincronizacionTotal() {
+
+    generarJSONBase_Completo();
+
+}
+
 function obtenerDiagramasCacheados() {
   const ssMaestro = SpreadsheetApp.getActiveSpreadsheet();
   
-  // 1. Declaramos TODAS las variables al principio para evitar el "Failed to fetch"
-  let diagObj = [], docObj = {}, habObj = {}, dniObj = {}, certObj = {}, telObj = {}, viajesObj = {};
-  let infiniaExtraObj = {}, entregasObj = {}; // Las variables de Infinia
-  let kmObj = {}; 
-  let obsObj = {}; 
-  let aptosObj = {};
-  let fotosObj = {};
+  // 1. GESTALT: PRÄGNANZ & PROXIMITY
+  // We define the final unified object upfront. This acts as our single source of truth 
+  // and establishes default fallbacks (empty arrays/objects) preventing UI crashes.
+  const payload = {
+    diagramas: [],
+    documentos: {},
+    habilitaciones: {},
+    dnis: {},
+    certificados: {},
+    telefonos: {},
+    viajesCampo: {},
+    infiniaProformas: {},
+    entregasInfinia: {},
+    fotosImgur: {},
+    vencimientosObj: {}, // <-- Integrated Expirations Pipeline (Row 11)
+    kilometros: {},
+    observaciones: {},
+    aptosMedicos: {}
+  };
 
-  // 2. Leer Caché Base (Filas de la 1 a la 10)
+  // 2. Caché Base (Filas de la 1 a la 11)
   try {
     const hojaCache = ssMaestro.getSheetByName('API_CACHE_BASICO');
     if (hojaCache && hojaCache.getLastRow() > 0) {
-      let data = hojaCache.getDataRange().getValues();
+      const data = hojaCache.getDataRange().getValues();
       
-      // Función auxiliar para parsear de forma segura sin romper el código
+      // Función auxiliar simplificada: Retorna un objeto parseado o null
       const parseSeguro = (filaIndex) => {
-        if (data.length <= filaIndex) return null;
-        let str = data[filaIndex].map(c => String(c||"").replace(/^'/,"")).join("");
+        if (filaIndex >= data.length) return null;
+        const str = data[filaIndex].map(c => String(c||"").replace(/^'/,"")).join("");
         if (!str) return null;
         try { return JSON.parse(str); } catch(e) { return null; }
       };
 
-      if (parseSeguro(0)) diagObj = parseSeguro(0);
-      if (parseSeguro(1)) docObj = parseSeguro(1);
-      if (parseSeguro(2)) habObj = parseSeguro(2);
-      if (parseSeguro(3)) dniObj = parseSeguro(3);
-      if (parseSeguro(4)) certObj = parseSeguro(4);
-      if (parseSeguro(5)) telObj = parseSeguro(5);
-      if (parseSeguro(6)) viajesObj = parseSeguro(6);
-      
-      // Filas adicionales y fotos
-      if (parseSeguro(7)) infiniaExtraObj = parseSeguro(7);
-      if (parseSeguro(8)) entregasObj = parseSeguro(8);
-      if (parseSeguro(9)) fotosObj = parseSeguro(9); // Fila 10 (Fotos) ahora se lee seguro
+      // Mapeo directo y conciso. Si parseSeguro falla, mantiene el fallback por defecto del payload.
+      payload.diagramas        = parseSeguro(0)  || payload.diagramas;
+      payload.documentos       = parseSeguro(1)  || payload.documentos;
+      payload.habilitaciones   = parseSeguro(2)  || payload.habilitaciones;
+      payload.dnis             = parseSeguro(3)  || payload.dnis;
+      payload.certificados     = parseSeguro(4)  || payload.certificados;
+      payload.telefonos        = parseSeguro(5)  || payload.telefonos;
+      payload.viajesCampo      = parseSeguro(6)  || payload.viajesCampo;
+      payload.infiniaProformas = parseSeguro(7)  || payload.infiniaProformas;
+      payload.entregasInfinia  = parseSeguro(8)  || payload.entregasInfinia;
+      payload.fotosImgur       = parseSeguro(9)  || payload.fotosImgur;
+      payload.vencimientosObj  = parseSeguro(10) || payload.vencimientosObj; // <-- Fila 11
     }
   } catch (e) { 
     console.error("Error leyendo caché base:", e); 
   }
   
-    // 3. Leer Caché de Kilómetros
+  // 3. Caché de Kilómetros
   try {
     const hojaKm = ssMaestro.getSheetByName('api_km');
     if (hojaKm && hojaKm.getLastRow() > 0) {
@@ -116,42 +137,34 @@ function obtenerDiagramasCacheados() {
       hojaKm.getDataRange().getValues().forEach(row => {
         row.forEach(cell => { if (cell) kmStr += String(cell).replace(/^'/, ""); });
       });
-      if (kmStr) kmObj = JSON.parse(kmStr);
+      if (kmStr) payload.kilometros = JSON.parse(kmStr);
     }
-  } catch (e) { console.error("Error leyendo caché KMs:", e); }
+  } catch (e) { 
+    console.error("Error leyendo caché KMs:", e); 
+  }
 
-  // 4. Leer Caché de Observaciones y Aptos Médicos
+  // 4. Caché de Observaciones y Aptos Médicos
   try {
     const hojaObs = ssMaestro.getSheetByName('OBSERVACIONES'); 
     if (hojaObs && hojaObs.getLastRow() > 0) {
-      let dataObs = hojaObs.getDataRange().getValues();
+      const dataObs = hojaObs.getDataRange().getValues();
+      
       if (dataObs.length > 0 && dataObs[0][0]) {
-        let obsStr = dataObs[0].map(c => String(c||"").replace(/^'/,"")).join("");
-        if (obsStr) obsObj = JSON.parse(obsStr);
+        const obsStr = dataObs[0].map(c => String(c||"").replace(/^'/,"")).join("");
+        if (obsStr) payload.observaciones = JSON.parse(obsStr);
       }
+      
       if (dataObs.length > 1 && dataObs[1][0]) {
-        let aptosStr = dataObs[1].map(c => String(c||"").replace(/^'/,"")).join("");
-        if (aptosStr) aptosObj = JSON.parse(aptosStr);
+        const aptosStr = dataObs[1].map(c => String(c||"").replace(/^'/,"")).join("");
+        if (aptosStr) payload.aptosMedicos = JSON.parse(aptosStr);
       }
     }
-  } catch (e) { console.error("Error leyendo caché Observaciones/Aptos:", e); }
+  } catch (e) { 
+    console.error("Error leyendo caché Observaciones/Aptos:", e); 
+  }
 
-  // 5. Retornar TODO consolidado
-  return JSON.stringify({
-    diagramas: diagObj,
-    documentos: docObj,
-    habilitaciones: habObj,
-    certificados: certObj, 
-    dnis: dniObj, 
-    telefonos: telObj, 
-    kilometros: kmObj,           // <-- KM Reconectado
-    observaciones: obsObj,       // <-- Historial Reconectado
-    aptosMedicos: aptosObj,      // <-- Aptos Reconectados
-    viajesCampo: viajesObj,
-    infiniaProformas: infiniaExtraObj, // <-- Infinia Reconectado
-    entregasInfinia: entregasObj,
-    fotosImgur: fotosObj       // <-- Checkboxes Reconectados
-  });
+  // 5. Retornar el payload unificado
+  return JSON.stringify(payload);
 }
 
 
@@ -207,11 +220,6 @@ function escribirChunksEnFila(hoja, fila, stringData) {
   }
 }
 
-/**
- * ============================================================================
- * G1: DIAGRAMAS Y ESTADO ACTUAL (Motor Core Optimizado - FILA 1)
- * ============================================================================
- */
 function generarJSONBase_Frecuente() {
   const hoy = new Date();
   const haceUnaSemana = new Date(hoy);
@@ -237,8 +245,11 @@ function generarJSONBase_Diario() {
 }
 
 function procesarVentanaDiagramas(offsetsMeses, hacerMerge = false) {
-  const ssMaestro = SpreadsheetApp.getActiveSpreadsheet();
+  // Enrutamiento duro: Siempre apuntará a tu base de datos principal, sin importar desde dónde se dispare el trigger
+  const ssMaestro = SpreadsheetApp.openById('1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc'); 
   const hoy = new Date();
+  
+  // ... (el resto del código queda exactamente igual)
   
   let hojaCache = ssMaestro.getSheetByName('API_CACHE_BASICO');
   if (!hojaCache) { hojaCache = ssMaestro.insertSheet('API_CACHE_BASICO'); hojaCache.hideSheet(); }
@@ -296,7 +307,7 @@ function procesarVentanaDiagramas(offsetsMeses, hacerMerge = false) {
     } catch(e) { console.warn("Iniciando caché G1 en blanco."); }
   }
 
-// B1. Leer JSON de Flota (Interno)
+  // B1. Leer JSON de Flota (Interno)
   let mapaFlota = {};
   try {
     const hojaUnidades = ssMaestro.getSheetByName('choferes y unidades');
@@ -389,7 +400,7 @@ function procesarVentanaDiagramas(offsetsMeses, hacerMerge = false) {
     }
   }
 
-for (let key in mapaChoferes) {
+  for (let key in mapaChoferes) {
      // 💡 Sumamos hex1 y hex2 al fallback por defecto
      let infoFlota = mapaFlota[key] || { tractor: '-', semi: '-', n_ute: '-', td: '-', hex1: '', hex2: '' };
      mapaChoferes[key].tractor = infoFlota.tractor;
@@ -867,7 +878,7 @@ function actualizarCacheViajesCampo() {
       }
     }
 
-// Guardado en Cache (Usando Chunks Horizontales en Fila 7)
+  // Guardado en Cache (Usando Chunks Horizontales en Fila 7)
     let cacheSheet = ssPrincipal.getSheetByName("API_CACHE_BASICO");
     if (cacheSheet) {
       // Usamos tu helper para trocear el JSON y pegarlo a lo largo de la fila 7
@@ -881,17 +892,17 @@ function actualizarCacheViajesCampo() {
   }
 }
 
-// 1. FUNCIÓN PARA LEER TODOS LOS TDs Y ENVIAR AL FRONT
+
 function obtenerDatosTDParaFront() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hojaTD = ss.getSheetByName('td');
   if (!hojaTD) return { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{} };
 
-  const leerFila = (numFila) => {
-    let values = hojaTD.getRange(numFila + ":" + numFila).getValues()[0];
-    let jsonStr = values.filter(String).map(c => String(c).replace(/^'/, "")).join("");
-    try { return jsonStr ? JSON.parse(jsonStr) : {}; } catch(e) { return {}; }
-  };
+    const leerFila = (numFila) => {
+      let values = hojaTD.getRange(numFila + ":" + numFila).getValues()[0];
+      let jsonStr = values.filter(String).map(c => String(c).replace(/^'/, "")).join("");
+      try { return jsonStr ? JSON.parse(jsonStr) : {}; } catch(e) { return {}; }
+    };
 
   return {
     campo: leerFila(1),
@@ -902,7 +913,6 @@ function obtenerDatosTDParaFront() {
   };
 }
 
-// 2. ACCIÓN PARA GUARDAR EL ESTADO (En tu doPost agrega el case 'toggleEstadoTD')
 function guardarEstadoCheckboxTD(tdId, estado) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let hojaTD = ss.getSheetByName('td');
@@ -965,4 +975,159 @@ function actualizarCacheG4_Fotos() {
   // Guardamos en la Fila 10 (Índice 9)
   escribirChunksEnFila(hojaCache, 10, JSON.stringify(mapaFotos));
   ssMaestro.toast("Caché de Fotos actualizado correctamente.", "G4 OK");
+}
+
+/**
+ * ============================================================================
+ * SINCRONIZACIÓN EN VIVO: ARCHIVO DIAGRAMAS EXTERNO
+ * ============================================================================
+ */
+
+// 1. EL INSTALADOR (Ejecutar manualmente SOLO UNA VEZ)
+function instalarTriggerDiagramas() {
+  const ID_DIAGRAMAS = ID_SPREADSHEET_DIAGRAMAS; // Usa tu variable global existente
+  
+  // Borramos triggers anteriores para evitar duplicados si lo corres por error dos veces
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'alEditarDiagramas') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+
+  // Creamos el nuevo "escuchador" apuntando al archivo externo
+  ScriptApp.newTrigger('alEditarDiagramas')
+    .forSpreadsheet(ID_DIAGRAMAS)
+    .onEdit()
+    .create();
+    
+  SpreadsheetApp.getActiveSpreadsheet().toast("Trigger de Diagramas instalado OK", "Éxito");
+}
+
+
+// 2. EL ESCUCHADOR (Se dispara automáticamente al editar)
+function alEditarDiagramas(e) {
+  // Filtro de seguridad
+  if (!e || !e.range) return;
+
+  const fila = e.range.getRow();
+  const columna = e.range.getColumn();
+  const nombreHoja = e.source.getActiveSheet().getName();
+
+  // 👉 LEY DE PRÄGNANZ (Filtro Estricto): 
+  // Solo actualizamos si la edición fue en el área útil del diagrama.
+  // Fila >= 6 (Donde empiezan los choferes)
+  // Columna >= 5 (Donde empiezan los días del mes, Columna E)
+  // Verificamos que el nombre de la hoja tenga formato de mes (Ej: "May-26")
+  const regexMes = /^[A-Z][a-z]{2}-\d{2}$/; 
+
+  if (fila >= 6 && columna >= 5 && regexMes.test(nombreHoja)) {
+    
+    // Si la edición fue en un día del mes válido, disparamos la actualización del caché G1
+    try {
+      // Usamos generarJSONBase_Frecuente porque actualiza el mes pasado, actual y los dos siguientes (la ventana más probable de edición)
+      generarJSONBase_Frecuente();
+    } catch (error) {
+      console.error("Error al sincronizar desde trigger:", error);
+    }
+  }
+}
+
+/**
+ * Genera un JSON con los vencimientos de las unidades y lo guarda en caché.
+ * Principio de Prägnanz: Estructura lineal, clara y dependencias agrupadas.
+ */
+function vencimientosUnidades() {
+  // 1. Referencias y Conexiones (Ley de Proximidad)
+  const ID_MASTER = '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
+  
+  // Abrimos el archivo de Movimientos usando la constante global existente
+  const ssMovimientos = SpreadsheetApp.openById(ID_SHEET_MOVIMIENTOS);
+  const hojaVencimientos = ssMovimientos.getSheetByName('Vencimientos.');
+  
+  if (!hojaVencimientos) {
+    console.error("UX/UI Feedback: No se encontró la pestaña 'Vencimientos.' en el archivo origen.");
+    return { success: false, error: "Pestaña 'Vencimientos.' no encontrada" };
+  }
+
+  // 2. Extracción de Datos
+  // CAMBIO CLAVE: Usamos getDisplayValues() para capturar el texto visualizado en la celda, 
+  // eliminando la necesidad de parsear fechas largas (ISO strings).
+  const data = hojaVencimientos.getDataRange().getDisplayValues();
+  let resultados = [];
+
+  // 3. Procesamiento (Iniciamos en row 2 -> índice 1)
+  for (let i = 1; i < data.length; i++) {
+    let fila = data[i];
+    
+    // Validación básica: Solo procesar si la columna B (índice 1) tiene datos
+    if (String(fila[1]).trim() !== "") {
+      
+      // Mapeo de columnas: B=1, C=2, G=6, H=7, J=9, K=10, L=11, M=12, N=13
+      // Al usar getDisplayValues, estos datos ya son strings limpios (ej: "15/06/2026")
+      resultados.push({
+        col_b: fila[1], 
+        col_c: fila[2], 
+        col_g: fila[6], 
+        col_h: fila[7], 
+        col_j: fila[9], 
+        col_k: fila[10],
+        col_l: fila[11],
+        col_m: fila[12],
+        col_n: fila[13]
+      });
+    }
+  }
+
+  // 4. Guardado en Caché Master
+  try {
+    const ssMaster = SpreadsheetApp.openById(ID_MASTER);
+    const hojaCache = ssMaster.getSheetByName('API_CACHE_BASICO');
+    
+    if (!hojaCache) {
+      throw new Error("Pestaña 'API_CACHE_BASICO' no encontrada");
+    }
+
+    // Reutilizamos el helper existente para guardar el JSON de forma segura
+    escribirChunksEnFila(hojaCache, 11, JSON.stringify(resultados));    
+    
+    // UX/UI Feedback: Notificación visual en el Google Sheet
+    ssMaster.toast("Vencimientos de unidades actualizados con éxito.", "Sincronización OK");
+    return { success: true };
+    
+  } catch (error) {
+    console.error("Error al guardar vencimientos:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Busca y mapea los vencimientos para la unidad seleccionada.
+ * @param {string} patente - La patente del tractor (ej. AF071WS)
+ * @param {Array} jsonVencimientos - El array parseado del API_CACHE_BASICO
+ */
+function mapearVencimientos(patente, jsonVencimientos) {
+    if (!patente || !jsonVencimientos) return null;
+
+    // Sanitización estricta: Eliminar espacios en blanco de la patente buscada
+    const patenteLimpia = String(patente).replace(/\s+/g, '').toUpperCase();
+
+    // Buscar la fila correspondiente (Asumiendo que col_b es la patente del Tractor)
+    const record = jsonVencimientos.find(item => 
+        String(item.col_b).replace(/\s+/g, '').toUpperCase() === patenteLimpia
+    );
+
+    if (!record) return null;
+
+    // Mapear las columnas "opacas" a claves legibles para la UI
+    // Ajusta las columnas según la estructura real de tu pestaña 'Vencimientos.'
+    return {
+        vtv_tr: record.col_g,  // VTV Tractor
+        vtv_se: record.col_h,  // VTV Semirremolque
+        mass_tr: record.col_j, // MASS Tractor
+        mass_se: record.col_k, // MASS Semirremolque
+        esp_es_tr: record.col_l, // ESP-ES
+        vi_tr: record.col_m,   // VI
+        ve_tr: record.col_n    // VE
+    };
 }
