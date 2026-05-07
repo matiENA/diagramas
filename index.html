@@ -38,6 +38,40 @@
 
 <body class="bg-gray-100 font-sans text-gray-800 min-h-screen flex flex-col">
 
+  <!-- [TAG: LOGIN WALL] -->
+<div id="login-wall" class="fixed inset-0 z-[200] bg-gray-100 flex flex-col items-center justify-center transition-opacity duration-500">
+    <div class="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 w-full max-w-sm transform transition-all animate-expand-anim">
+        
+        <!-- Logo / Titulo focalizado (Prägnanz) -->
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-primary text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <h1 class="text-2xl font-black text-gray-900 tracking-tight">Diagramas EOR</h1>
+            <p class="text-xs text-gray-500 mt-1 uppercase tracking-widest font-bold">Acceso Restringido</p>
+        </div>
+
+        <!-- Formulario (Agrupación por Proximidad) -->
+        <div class="space-y-5">
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Usuario</label>
+                <input type="text" id="login-user" class="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary block p-3 font-bold outline-none shadow-inner transition-all" placeholder="ID de Usuario" autocomplete="off">
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Contraseña</label>
+                <input type="password" id="login-pass" class="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-primary focus:border-primary block p-3 font-bold outline-none shadow-inner transition-all" placeholder="••••••••" onkeydown="if(event.key === 'Enter') procesarLogin()">
+            </div>
+            
+            <button id="btn-login" onclick="procesarLogin()" class="w-full bg-primary text-white font-black text-sm rounded-xl p-3.5 mt-2 hover:bg-blue-800 transition-colors shadow-md flex justify-center items-center gap-2">
+                Ingresar al Sistema
+            </button>
+        </div>
+        
+        <!-- Feedback de error oculto por defecto -->
+        <div id="login-error" class="hidden mt-4 p-3 bg-red-50 border border-red-200 text-red-600 text-xs font-bold rounded-lg text-center"></div>
+    </div>
+</div>
+
   <header class="max-w-7xl mx-auto w-full pt-6 pb-2 px-4 sm:px-6">
     <h1 class="text-2xl sm:text-3xl font-bold text-primary tracking-tight">Estado de Conductores</h1>
     <p class="text-xs sm:text-sm font-normal text-gray-500 mt-1">Gestión de diagramas y alertas de actividad</p>
@@ -229,18 +263,84 @@ window.sincronizarBackend = function() {
       "personal activo", "chofer", "choferes", "vacante", "-", "1"
     ]);
 
-// --- [TAG: INIT] ---
-    document.addEventListener('DOMContentLoaded', () => { 
-        document.getElementById('nav-fecha-contexto').value = fechaGlobalContexto;
-        
-        // Carga inicial (Con loader visual, para que el usuario sepa que arranca)
-        cargarDatosDesdeCache(); 
-        
-        // Polling Silencioso: Se ejecuta cada 45 segundos (45000 ms)
-        // ⚠️ Nota de Cuotas: No lo bajes a menos de 30 segundos o Google Apps Script bloqueará tu IP 
-        // por "Too Many Requests" si tienes varias pestañas abiertas.
-        setInterval(sincronizacionSilenciosa, 45000); 
+// --- [TAG: INIT & AUTH FLOW] ---
+document.addEventListener('DOMContentLoaded', () => { 
+    document.getElementById('nav-fecha-contexto').value = fechaGlobalContexto;
+    
+    // 1. Verificación de Seguridad (El Wall)
+    verificarSesion();
+});
+
+function verificarSesion() {
+    const token = sessionStorage.getItem('eor_session_token');
+    
+    if (!token) {
+        // No hay sesión: Aseguramos que el wall esté visible y paramos todo.
+        document.getElementById('login-wall').classList.remove('hidden');
+    } else {
+        // Hay sesión activa: Desbloqueamos la UI y cargamos datos.
+        desbloquearSistema();
+    }
+}
+
+function procesarLogin() {
+    const user = document.getElementById('login-user').value.trim();
+    const pass = document.getElementById('login-pass').value.trim();
+    const btn = document.getElementById('btn-login');
+    const errorBox = document.getElementById('login-error');
+    
+    if (!user || !pass) {
+        errorBox.innerText = "Complete ambos campos.";
+        errorBox.classList.remove('hidden');
+        return;
+    }
+
+    // Feedback visual (Principio Gestalt de Buena Continuidad)
+    btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Validando...`;
+    btn.disabled = true;
+    errorBox.classList.add('hidden');
+
+    fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'login', usuario: user, password: pass })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (res.success) {
+            // Guardamos la sesión
+            sessionStorage.setItem('eor_session_token', res.token);
+            sessionStorage.setItem('eor_session_role', res.rol);
+            desbloquearSistema();
+        } else {
+            errorBox.innerText = res.error || "Acceso denegado.";
+            errorBox.classList.remove('hidden');
+        }
+    })
+    .catch(err => {
+        errorBox.innerText = "Error de red. Intente nuevamente.";
+        errorBox.classList.remove('hidden');
+    })
+    .finally(() => {
+        btn.innerHTML = "Ingresar al Sistema";
+        btn.disabled = false;
     });
+}
+
+function desbloquearSistema() {
+    // Transición suave para ocultar el Wall
+    const wall = document.getElementById('login-wall');
+    wall.classList.add('opacity-0', 'pointer-events-none');
+    
+    setTimeout(() => {
+        wall.classList.add('hidden');
+    }, 500);
+
+    // Iniciamos la carga asíncrona real de datos
+    cargarDatosDesdeCache(); 
+    
+    // Iniciamos el polling silencioso solo cuando ya estamos logueados
+    setInterval(sincronizacionSilenciosa, 45000); 
+}
 
 document.addEventListener('click', (e) => {
         // 1. Cerrar dropdown de búsqueda individual
