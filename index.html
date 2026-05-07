@@ -300,6 +300,36 @@ document.addEventListener('click', (e) => {
         filtrarTabla();
     }
 
+    /**
+ * Busca y mapea los vencimientos para la unidad seleccionada.
+ * Ejecutado en el cliente (Frontend) para mayor velocidad.
+ */
+window.mapearVencimientos = function(patente, jsonVencimientos) {
+    if (!patente || !jsonVencimientos || !Array.isArray(jsonVencimientos)) return null;
+
+    // Limpieza estricta: elimina espacios, guiones y caracteres no alfanuméricos
+    const patenteLimpia = String(patente).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+    // Buscar la fila correspondiente
+    const record = jsonVencimientos.find(item => {
+        const patenteItem = String(item.col_b || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        return patenteItem === patenteLimpia;
+    });
+
+    if (!record) return null;
+
+    // Mapeo adaptado a las variables que espera tu renderBadgeUnidad
+    return {
+        vtv_tr: record.col_g,  
+        vtv_semi: record.col_h,  // Ajustado de 'vtv_se' a 'vtv_semi' para match con la UI
+        mass_tr: record.col_j, 
+        mass_semi: record.col_k, // Ajustado de 'mass_se' a 'mass_semi'
+        esp_es: record.col_l,  
+        vi: record.col_m,   
+        ve: record.col_n    
+    };
+};
+
     // --- [TAG: UTILS Y CORE] ---
     window.parseFechaObs = function(fechaStr) {
         if (!fechaStr || fechaStr === '-') return null;
@@ -383,6 +413,8 @@ document.addEventListener('click', (e) => {
         h.forEach(k => { if(k.fechaCorta === datePart) km += parseFloat(k.km) || 0; });
         return km;
     };
+
+
 
     function getSrvTheme(srvName) {
         let name = (srvName || '').toUpperCase().trim();
@@ -535,73 +567,75 @@ document.addEventListener('click', (e) => {
           return "drv_" + nombre.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
       };
 
-function cargarDatosDesdeCache() {
+/**
+ * Synchronizes local state with backend cache using an automated mapping pattern.
+ * Applies the Principle of Simplicity (Prägnanz) to unify data normalization.
+ */
+async function cargarDatosDesdeCache() {
     mostrarCargando(true);
     
-    Promise.all([
-        fetch(`${API_URL}?action=obtenerDiagramasCacheados`).then(res => {
-            if (!res.ok) throw new Error("Error red diagramas");
-            return res.text();
-        }),
-        fetch(`${API_URL}?action=obtenerTDs`).then(res => {
-            if (!res.ok) throw new Error("Error red TDs");
-            return res.json();
-        })
-    ])
-    .then(([jsonStringDiagramas, dataTDs]) => {
-        try { 
-            // 1. CARGAR DATOS DE TD A LA VARIABLE GLOBAL (Añadido el campo extra)
-            window.tdGlobalData = {
-                campo: dataTDs.campo || {},
-                infinia: dataTDs.infinia || {},
-                liviano: dataTDs.liviano || {},
-                euro: dataTDs.euro || {},
-                estados: dataTDs.estados || {},
-                extra: dataTDs.codigosExtra || {} // Guardará los 6 dígitos vinculados al TD
-            };
+    try {
+        const [resDiagramas, dataTDs] = await Promise.all([
+            fetch(`${API_URL}?action=obtenerDiagramasCacheados`).then(res => res.json()), // Assumes backend now returns JSON
+            fetch(`${API_URL}?action=obtenerTDs`).then(res => res.json())
+        ]);
 
-            const data = typeof jsonStringDiagramas === 'string' ? JSON.parse(jsonStringDiagramas) : jsonStringDiagramas;
-            
-            datosGlobales = (data.diagramas || []).filter(c => {
-                if (!c.nom) return false;
-                let nombreLimpio = String(c.nom).trim().toLowerCase();
-                return !NOMBRES_IGNORADOS.has(nombreLimpio) && nombreLimpio.length > 2;
-            }).map(c => {
-                c._safeId = crearSafeId(c.nom);
-                return c;
-            });
-            
-            const normalizarClaves = (obj) => {
-                let objNormalizado = {};
-                for (let k in obj) {
-                    if (k) {
-                        let llaveLimpia = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-                        objNormalizado[llaveLimpia] = obj[k];
-                    }
-                }
-                return objNormalizado;
-            };
+        // 1. TD DATA SYNC (Mapping by Proximity)
+        window.tdGlobalData = {
+            campo:   dataTDs.campo || {},
+            infinia: dataTDs.infinia || {},
+            liviano: dataTDs.liviano || {},
+            euro:    dataTDs.euro || {},
+            estados: dataTDs.estados || {},
+            extra:   dataTDs.codigosExtra || {}
+        };
 
-            docsGlobales = normalizarClaves(data.documentos || {});
-            habsGlobales = normalizarClaves(data.habilitaciones || {});
-            certsGlobales = normalizarClaves(data.certificados || {});
-            kmsGlobales = normalizarClaves(data.kilometros || {});
-            dnisGlobales = normalizarClaves(data.dnis || {});
-            telefonosGlobales = normalizarClaves(data.telefonos || {});
-            historialGlobal = normalizarClaves(data.observaciones || {});
-            aptosGlobales = normalizarClaves(data.aptosMedicos || {});
-            viajesGlobales = normalizarClaves(data.viajesCampo || {});
-            fotosGlobales = data.fotosImgur || {};
-            filtrarTabla(); 
-            mostrarCargando(false); 
-        } catch (e) { 
-            mostrarErrorGlobal("Error parseando caché: " + e.message); 
-            mostrarCargando(false); 
-        }
-    })
-    .catch(err => mostrarErrorGlobal(err.message));
+        // 2. HELPER: NORMALIZATION (Ensures Law of Similarity across all datasets)
+        const normalize = (obj) => {
+            if (!obj) return {};
+            return Object.keys(obj).reduce((acc, k) => {
+                const cleanKey = String(k).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+                acc[cleanKey] = obj[k];
+                return acc;
+            }, {});
+        };
+
+        // 3. AUTOMATED MAPPING (The "Symmetry" Rule)
+        // We map the incoming keys to our global variables in one clean block.
+        const map = {
+            documentos:     v => docsGlobales = normalize(v),
+            habilitaciones: v => habsGlobales = normalize(v),
+            certificados:   v => certsGlobales = normalize(v),
+            kilometros:     v => kmsGlobales = normalize(v),
+            dnis:           v => dnisGlobales = normalize(v),
+            telefonos:      v => telefonosGlobales = normalize(v),
+            observaciones:  v => historialGlobal = normalize(v),
+            aptosMedicos:   v => aptosGlobales = normalize(v),
+            viajesCampo:    v => viajesGlobales = normalize(v),
+            vencimientosObj: v => window.vencimientosCacheGlobal = v, // New Expirations Row
+            fotosImgur:     v => fotosGlobales = v || {}
+        };
+
+        // Execute mapping loop
+        Object.keys(map).forEach(key => map[key](resDiagramas[key]));
+
+        // 4. DIAGRAM FILTERING
+        datosGlobales = (resDiagramas.diagramas || [])
+            .filter(c => {
+                const name = String(c.nom || "").trim().toLowerCase();
+                return name.length > 2 && !NOMBRES_IGNORADOS.has(name);
+            })
+            .map(c => ({ ...c, _safeId: crearSafeId(c.nom) }));
+
+        // 5. UI FEEDBACK (Good Continuation)
+        filtrarTabla(); 
+        mostrarCargando(false); 
+
+    } catch (e) { 
+        mostrarErrorGlobal("Error de sincronización: " + e.message); 
+        mostrarCargando(false); 
+    }
 }
-
 // --- [NUEVO] AUTO-REFRESH SILENCIOSO SIN BLINK ---
 function sincronizacionSilenciosa() {
     // 1. SAFEGUARD: Si el usuario está escribiendo en un input, editando un modal, 
@@ -693,6 +727,57 @@ function sincronizacionSilenciosa() {
     })
     .catch(err => console.warn("Error de red en background:", err));
 }
+
+// --- Lógica del Dropdown de Vencimientos de Unidades ---
+window.toggleVencimientosUnidad = function(safeId) {
+    const panel = document.getElementById(`venc-unidad-${safeId}`);
+    const icon = document.getElementById(`icon-venc-unidad-${safeId}`);
+    if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        panel.classList.add('expand-anim');
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        panel.classList.add('hidden');
+        panel.classList.remove('expand-anim');
+        icon.style.transform = 'rotate(0deg)';
+    }
+};
+
+// --- Reutiliza evaluarEstadoDoc para renderizar Badges de Vencimientos ---
+window.renderBadgeUnidad = function(fechaStr, tipo, unidad, fBaseObj) {
+    // Si no hay fecha o viene vacía/nula
+    if (!fechaStr || fechaStr === '-' || fechaStr.trim() === '') {
+        return `
+        <div class="flex justify-between items-center bg-white border border-gray-100 px-2.5 py-1.5 rounded-lg shadow-sm opacity-60">
+            <span class="text-[10px] font-black text-gray-400 uppercase tracking-wide">${tipo} <span class="font-bold">(${unidad})</span></span>
+            <span class="text-[10px] font-bold text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded-md">S/D</span>
+        </div>`;
+    }
+
+    // Normalizar fecha asumiendo que viene en YYYY-MM-DD o DD/MM/YYYY
+    let fechaNormalizada = fechaStr;
+    if (fechaStr.includes('/')) {
+        let partes = fechaStr.split('/');
+        if (partes.length === 3) fechaNormalizada = `${partes[2]}-${partes[1]}-${partes[0]}`;
+    }
+
+    let est = evaluarEstadoDoc(fechaNormalizada, fBaseObj);
+    let badgeClass = est === 'VENCIDO' ? 'bg-red-50 text-red-700 border-red-200' : 
+                     est === 'POR_VENCER' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' : 
+                     'bg-green-50 text-green-700 border-green-200';
+    
+    let dotColor = est === 'VENCIDO' ? '#ef4444' : est === 'POR_VENCER' ? '#eab308' : '#22c55e';
+    let displayDate = fechaNormalizada.split('-').reverse().join('/');
+
+    return `
+    <div class="flex justify-between items-center bg-white border border-gray-200 px-2.5 py-1.5 rounded-lg shadow-sm hover:border-gray-300 transition-colors">
+        <span class="text-[10px] font-black text-gray-700 uppercase tracking-wide">${tipo} <span class="text-gray-400 font-bold">(${unidad})</span></span>
+        <div class="flex items-center gap-1.5 border px-1.5 py-0.5 rounded-md ${badgeClass}">
+            <span class="w-1.5 h-1.5 rounded-full shadow-sm" style="background-color: ${dotColor};"></span>
+            <span class="text-[10px] font-mono font-bold tracking-tight">${displayDate}</span>
+        </div>
+    </div>`;
+};
 
 function filtrarTabla() {
         const texto = document.getElementById('buscador-nombre') ? document.getElementById('buscador-nombre').value.toLowerCase().trim() : '';
@@ -1521,28 +1606,62 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
         let badgeCert = cEst === 'VENCIDO' ? '<span class="text-[10px] text-red-600 bg-red-100 px-2 py-1 rounded font-bold border border-red-300">VENCIDO</span>' : cEst === 'POR_VENCER' ? '<span class="text-[10px] text-yellow-700 bg-yellow-100 px-2 py-1 rounded font-bold border border-yellow-300">POR VENCER</span>' : '<span class="text-[10px] text-green-700 bg-green-50 px-2 py-1 rounded font-bold border border-green-200">VIGENTE</span>';
         const theme = getSrvTheme(chofer.srv);
 
- let urlFoto = fotosGlobales[dniDelChofer];
-        let avatarHtml = '';
-        let commonImgClasses = "w-full h-48 md:h-full min-h-[180px] object-cover rounded-xl shadow-sm border border-gray-200 shrink-0 bg-white";
+// 1. Evaluate your unit data BEFORE starting the template string
+    let urlFoto = fotosGlobales[dniDelChofer];
+    let avatarHtml = '';
+    let commonImgClasses = "w-full h-48 md:h-full min-h-[180px] object-cover rounded-xl shadow-sm border border-gray-200 shrink-0 bg-white";
+    
+    if (urlFoto) {
+        avatarHtml = `<img src="${urlFoto}" referrerpolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256'" class="${commonImgClasses}" alt="Foto de ${chofer.nom}">`;
+    } else {
+        avatarHtml = `<img src="https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256" class="${commonImgClasses}" alt="Avatar de ${chofer.nom}">`;
+    }
+
+// Dentro de tu función principal de renderizado (ej. mostrarDetalleConductor)
+
+// 1. IMPORTANTE: Asegurar que unidadData es 'let'
+let unidadData = (window.unidadesGlobales && window.unidadesGlobales[chofer.tractor]) || {};
+
+// 2. Bloque Seguro: Mapeo local de Vencimientos
+try {
+    let cache = window.vencimientosCacheGlobal;
+    
+    // Validar y parsear si viene como string
+    if (cache && typeof cache === 'string') {
+        cache = JSON.parse(cache);
+    }
+
+    // Si tenemos el caché y el chofer tiene un tractor asignado
+    if (cache && Array.isArray(cache) && chofer.tractor) {
+        let datosVencimientos = window.mapearVencimientos(chofer.tractor, cache);
         
-        if (urlFoto) {
-            // Agregamos referrerpolicy="no-referrer" explícitamente en el tag para saltar bloqueos de Imgur
-            avatarHtml = `<img src="${urlFoto}" referrerpolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256'" class="${commonImgClasses}" alt="Foto de ${chofer.nom}">`;
+        // Si hay coincidencia de patente, fusionamos los datos
+        if (datosVencimientos) {
+            unidadData = { ...unidadData, ...datosVencimientos };
         } else {
-            avatarHtml = `<img src="https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256" class="${commonImgClasses}" alt="Avatar de ${chofer.nom}">`;
+            console.warn(`No se encontraron vencimientos para la patente: ${chofer.tractor}`);
         }
+    }
+} catch (error) {
+    console.error("Error UI al procesar vencimientos de la unidad:", error);
+}
+// A partir de aquí, let html = `...` se ejecutará siempre.
 
-        let html = `
-        <div class="col-span-12 bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-5 w-full items-stretch">
-            
-            <div class="shrink-0 w-full md:w-36 lg:w-48 flex justify-center md:justify-start">
-                ${avatarHtml}
-            </div>
+// 4. A partir de aquí, tu HTML template literal ya puede inyectar:
+// ${renderBadgeVencimiento('MASS (TR)', unidadData.mass_tr)}
 
-            <div class="flex flex-col gap-4 w-full flex-1 min-w-0 justify-between">
-                
-                <div class="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between w-full border-b border-gray-100 pb-3">
+    // 2. Start the HTML template literal
+    let html = `
+    <div class="col-span-12 bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-5 w-full items-stretch">
+        
+        <div class="shrink-0 w-full md:w-36 lg:w-48 flex justify-center md:justify-start">
+            ${avatarHtml}
+        </div>
+
+        <div class="flex flex-col gap-4 w-full flex-1 min-w-0 justify-between">
             
+            <div class="flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between w-full border-b border-gray-100 pb-3">
+
             <div class="flex flex-col gap-1 min-w-[250px]">
                         <h2 class="text-xl sm:text-2xl font-black text-gray-900 leading-tight inline-block hover:text-blue-700 cursor-pointer transition-all w-max max-w-full truncate" onclick="copiarAlPortapapeles('${chofer.nom.replace(/'/g, "\\'")}', event)" title="Copiar Nombre">${chofer.nom}</h2>
                         
@@ -1587,6 +1706,7 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
                 </div>
                 
                 <div class="flex flex-col xl:flex-row items-center gap-2 bg-white p-2 rounded-xl border border-gray-100 shadow-sm overflow-x-auto custom-scrollbar w-full">
+        
                    
                    
                         <div class="text-[11px] font-black uppercase text-indigo-900 tracking-widest px-3 border-r border-gray-100 shrink-0 text-center xl:text-left flex items-center gap-1.5">
@@ -1621,13 +1741,55 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
                     </div>
                 </div>
 
-                <div class="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 w-full min-w-0">
-                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">N° UTE Interno</span><div><span onclick="copiarAlPortapapeles('${chofer.n_ute}', event)" class="font-black text-gray-800 text-base bg-gray-50 px-2 py-0.5 rounded border border-dashed border-gray-300 inline-block cursor-pointer hover:text-blue-600 shadow-sm transition-colors">${chofer.n_ute || '-'}</span></div></div>
-                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Tractor</span><div><span onclick="copiarAlPortapapeles('${chofer.tractor}', event)" class="font-mono font-bold text-blue-900 text-base bg-white px-2 py-0.5 rounded border border-blue-200 inline-block cursor-pointer hover:bg-blue-50 shadow-sm transition-colors">${chofer.tractor || '-'}</span></div></div>
-                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Semi</span><div><span onclick="copiarAlPortapapeles('${chofer.semi}', event)" class="font-mono font-bold text-blue-900 text-base bg-white px-2 py-0.5 rounded border border-blue-200 inline-block cursor-pointer hover:bg-blue-50 shadow-sm transition-colors">${chofer.semi || '-'}</span></div></div>
-                    <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Servicio</span><div><span class="inline-block ${theme.softBg} ${theme.softText} border ${theme.border} px-2 py-0.5 rounded font-black text-sm shadow-sm tracking-wide">${chofer.srv || '-'}</span></div></div>
-                </div>
 
+
+
+<div class="flex-1 flex flex-col w-full min-w-0">
+    <!-- INFO PRINCIPAL -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-t-xl border border-slate-100 w-full relative z-10 shadow-sm">
+        <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">N° UTE Interno</span><div><span onclick="copiarAlPortapapeles('${chofer.n_ute}', event)" class="font-black text-gray-800 text-base bg-white px-2 py-0.5 rounded border border-dashed border-gray-300 inline-block cursor-pointer hover:text-blue-600 shadow-sm transition-colors">${chofer.n_ute || '-'}</span></div></div>
+        <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Tractor</span><div><span onclick="copiarAlPortapapeles('${chofer.tractor}', event)" class="font-mono font-bold text-blue-900 text-base bg-white px-2 py-0.5 rounded border border-blue-200 inline-block cursor-pointer hover:bg-blue-50 shadow-sm transition-colors">${chofer.tractor || '-'}</span></div></div>
+        <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Semi</span><div><span onclick="copiarAlPortapapeles('${chofer.semi}', event)" class="font-mono font-bold text-blue-900 text-base bg-white px-2 py-0.5 rounded border border-blue-200 inline-block cursor-pointer hover:bg-blue-50 shadow-sm transition-colors">${chofer.semi || '-'}</span></div></div>
+        <div class="flex flex-col"><span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Servicio</span><div><span class="inline-block ${theme.softBg} ${theme.softText} border ${theme.border} px-2 py-0.5 rounded font-black text-sm shadow-sm tracking-wide">${chofer.srv || '-'}</span></div></div>
+    </div>
+
+    <!-- BOTÓN DESPLEGABLE ADHERIDO -->
+    <div class="bg-slate-100 border-x border-b border-slate-200 rounded-b-xl hover:bg-slate-200/80 transition-colors cursor-pointer flex justify-center items-center py-2 group shadow-sm z-0 relative -mt-1" onclick="toggleVencimientosUnidad('${chofer._safeId}')">
+        <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest group-hover:text-primary transition-colors flex items-center gap-1.5">
+            Documentación Unidad (VTV / MASS) 
+            <svg id="icon-venc-unidad-${chofer._safeId}" class="w-3.5 h-3.5 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+        </span>
+    </div>
+
+    <!-- CONTENEDOR EXPANDIBLE CON GRID (Gestalt: Proximidad) -->
+    <div id="venc-unidad-${chofer._safeId}" class="hidden bg-white border border-slate-200 rounded-xl mt-3 p-4 shadow-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            
+            <!-- Grupo MASS (Tractor y Semi contiguos) -->
+            <div class="flex flex-col gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100 shadow-inner">
+                <span class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1 border-b border-gray-200 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg> MASS</span>
+                ${renderBadgeUnidad(unidadData.mass_tr || unidadData.col_g, 'MASS', 'TR', fBaseObj)}
+                ${renderBadgeUnidad(unidadData.mass_semi || unidadData.col_j, 'MASS', 'SE', fBaseObj)}
+            </div>
+
+            <!-- Grupo VTV (Tractor y Semi contiguos) -->
+            <div class="flex flex-col gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100 shadow-inner">
+                <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1 border-b border-gray-200 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> VTV / RTO</span>
+                ${renderBadgeUnidad(unidadData.vtv_tr || unidadData.col_h, 'VTV', 'TR', fBaseObj)}
+                ${renderBadgeUnidad(unidadData.vtv_semi || unidadData.col_k, 'VTV', 'SE', fBaseObj)}
+            </div>
+
+            <!-- Grupo EXTRAS (Esp-Es, VI, VE) -->
+            <div class="flex flex-col gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100 shadow-inner">
+                <span class="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1 border-b border-gray-200 pb-1.5 text-center flex justify-center items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> CERTIFICADOS EXTRA</span>
+                ${renderBadgeUnidad(unidadData.esp_es || unidadData.col_l, 'ESP-ES', 'TR', fBaseObj)}
+                ${renderBadgeUnidad(unidadData.vi || unidadData.col_m, 'VI', 'TR', fBaseObj)}
+                ${renderBadgeUnidad(unidadData.ve || unidadData.col_n, 'VE', 'TR', fBaseObj)}
+            </div>
+
+        </div>
+    </div>
+</div>
             </div>
         </div>
 
@@ -2265,7 +2427,7 @@ window.guardarEstadoDesdeRango = function(safeId, startIso, endIso) {
 window.renderizarHistorialEventos = function(nombreChofer, startIso = null, endIso = null) {
         const contenedor = document.getElementById('contenedor-observaciones'); const badgeContador = document.getElementById('badge-contador-obs');
         if (!contenedor) return;
-        const keyBuscador = String(nombreChofer).trim().toLowerCase(); let historial = historialGlobal[keyBuscador] || [];
+        const keyBuscador = String(nombreChofer).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '); let historial = historialGlobal[keyBuscador] || [];
         let textoRango = "Todas las observaciones";
 
         if (startIso && endIso) {
