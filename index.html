@@ -3030,13 +3030,14 @@ window.guardarParametros = function() {
         }
         // ---------------------------------------------
 
-        const payload = {
-            action: 'actualizarEstado',
-            nombre: chofer.nom,
-            startIso: fInicio,
-            endIso: fFin,
-            est: payloadEst // Envia texto o array según corresponda
-        };
+const payload = {
+  metodo: "actualizarEstado",
+  nombreChofer: chofer,
+  fechaInicioIso: fechaInicio,
+  fechaFinIso: fechaFin,
+  nuevoEstado: estado,
+  usuarioActivo: datosGlobales.usuarioActivo // Asegúrate de incluir esta llave
+};
 
         fetch(API_URL, {
             method: 'POST',
@@ -3061,7 +3062,29 @@ window.guardarParametros = function() {
     function mostrarCargando(m) { document.getElementById('loader-global').style.display = m ? 'flex' : 'none'; document.getElementById('dashboard').style.opacity = m ? '0.3' : '1'; }
     function mostrarErrorGlobal(msg) { showToast("Error de conexión: " + msg, "error"); mostrarCargando(false); }
 
+    // En tu index.html, al momento de actualizar un estado
+async function enviarCambioEstado(chofer, fIni, fFin, estado) {
+  // Obtienes el usuario logueado de tu estado global o localStorage
+  const usuarioActual = localStorage.getItem('usuarioLogueado') || datosGlobales.usuario;
 
+  const payload = {
+    metodo: "actualizarEstado",
+    usuario: usuarioActual, // <- La pieza clave
+    datos: {
+      nombreChofer: chofer,
+      fechaInicio: fIni,
+      fechaFin: fFin,
+      nuevoEstado: estado
+    }
+  };
+
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  
+  // ... manejo de UI ...
+}
 
   </script>
 </body>
