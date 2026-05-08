@@ -42,9 +42,15 @@ function doPost(e) {
     let payload = JSON.parse(e.postData.contents);
     
     if (payload.action === 'actualizarEstado') {
-      respuesta = actualizarEstado(payload.nombre, payload.startIso, payload.endIso, payload.est);
-      
-    } else if (payload.action === 'guardarDocumentos') {
+  // DEBES AGREGAR payload.usuario AQUÍ:
+  respuesta = actualizarEstado(
+    payload.nombre, 
+    payload.startIso, 
+    payload.endIso, 
+    payload.est, 
+    payload.usuario // <--- Ahora el backend sí recibe quién lo hizo
+  );
+  } else if (payload.action === 'guardarDocumentos') {
       respuesta = guardarDocumentos(payload.nombre, payload.exVen, payload.licVen, payload.certVen);
       
     } else if (payload.action === 'marcarEntregado') {
@@ -59,6 +65,9 @@ function doPost(e) {
     // 👉 NUEVO: Endpoint para la Sincronización Total (Botón del Front-End)
     } else if (payload.action === 'sincronizarTotal') {
       respuesta = ejecutarSincronizacionTotal();
+     // 👉 NUEVO: Endpoint para Autenticación (Login Wall)
+    } else if (payload.action === 'login') {
+      respuesta = validarLogin(payload.usuario, payload.password);
     }
 
   } catch (error) {
@@ -68,11 +77,43 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(respuesta)).setMimeType(ContentService.MimeType.JSON);
 }
 
+function validarLogin(usuarioLimpio, passwordLimpio) {
+  // Conexión al archivo maestro donde viven las bases de datos
+  const ID_MASTER = '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
+  
+  try {
+    const ssMaster = SpreadsheetApp.openById(ID_MASTER);
+    const hojaUsuarios = ssMaster.getSheetByName('DB_Usuarios');
+    
+    if (!hojaUsuarios) {
+      return { success: false, error: "Error de configuración: No existe DB_Usuarios." };
+    }
 
-function ejecutarSincronizacionTotal() {
+    const data = hojaUsuarios.getDataRange().getValues();
+    
+    // Ignoramos la fila 1 (Cabeceras)
+    for (let i = 1; i < data.length; i++) {
+      let userDb = String(data[i][0]).trim();
+      let passDb = String(data[i][1]).trim();
+      let rolDb = String(data[i][2]).trim();
 
-    generarJSONBase_Completo();
-
+      if (userDb === usuarioLimpio && passDb === passwordLimpio) {
+        // Generamos un "token" muy básico y opaco para el frontend
+        let token = Utilities.base64Encode(userDb + "_" + new Date().getTime());
+        
+        return { 
+          success: true, 
+          token: token, 
+          usuario: userDb,
+          rol: rolDb 
+        };
+      }
+    }
+    
+    return { success: false, error: "Credenciales inválidas." };
+  } catch (error) {
+    return { success: false, error: "Error interno del servidor." };
+  }
 }
 
 function obtenerDiagramasCacheados() {
@@ -166,9 +207,6 @@ function obtenerDiagramasCacheados() {
   // 5. Retornar el payload unificado
   return JSON.stringify(payload);
 }
-
-
-
 function parseSafeDate(val) {
   if (!val) return null;
   if (val instanceof Date) return val;
@@ -185,7 +223,6 @@ function parseSafeDate(val) {
   if (!isNaN(d.getTime())) return d;
   return null;
 }
-
 function toISODate(d) {
   if (!d || !(d instanceof Date) || isNaN(d)) return "";
   let tzOffset = d.getTimezoneOffset() * 60000;
@@ -422,68 +459,72 @@ function procesarVentanaDiagramas(offsetsMeses, hacerMerge = false) {
   ssMaestro.toast(`Diagramas OK. (Sin Legajos, Usando Nombres y DNI)`, "G1 OK");
 }
 
-
-function actualizarEstado(nombreChofer, fechaInicioIso, fechaFinIso, nuevoEstado) {
+/**
+ * Actualiza el estado en el diagrama y registra el log.
+ * El parámetro usuarioActivo debe ir al final para evitar desplazar los datos originales.
+ */
+function actualizarEstado(nombreChofer, fechaInicioIso, fechaFinIso, nuevoEstado, usuarioActivo) {
   try {
     const ssDiag = SpreadsheetApp.openById(ID_SPREADSHEET_DIAGRAMAS);
-    let fIni = new Date(fechaInicioIso + "T12:00:00");
-    let fFin = new Date(fechaFinIso + "T12:00:00");
-    
-    if (fIni > fFin) { let temp = fIni; fIni = fFin; fFin = temp; }
-
-    let currentDate = new Date(fIni);
     const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
     
-    // Almacenaremos los valores agrupados por hoja para escribirlos de una sola vez
-    let updatesPorHoja = {};
-    let diaIndex = 0; // Índice para recorrer el Array si 'nuevoEstado' es una secuencia
+    let fIni = new Date(fechaInicioIso + "T12:00:00");
+    let fFin = new Date(fechaFinIso + "T12:00:00");
+    if (fIni > fFin) { let temp = fIni; fIni = fFin; fFin = temp; }
 
+    let updatesPorHoja = {};
+    let currentDate = new Date(fIni);
+    let diaIndex = 0;
+
+    // 1. Mapeo de días
     while (currentDate <= fFin) {
       let nombreHoja = mesesAbrev[currentDate.getMonth()] + "-" + String(currentDate.getFullYear()).slice(-2);
-      let diaDelMes = currentDate.getDate();
-      let colEscribir = diaDelMes + 4; // Columna E (5) es el día 1
+      let colEscribir = currentDate.getDate() + 4; 
 
-      // Verificamos si es un Array de secuencia o un estado normal
       let valorBruto = Array.isArray(nuevoEstado) ? nuevoEstado[diaIndex] : nuevoEstado;
       let valorAEscribir = (valorBruto === 'BORRAR' || valorBruto === 'OPERATIVO') ? "" : valorBruto;
 
       if (!updatesPorHoja[nombreHoja]) {
         updatesPorHoja[nombreHoja] = { startCol: colEscribir, values: [] };
       }
-      
-      // Añadimos el valor al bloque de esta hoja
       updatesPorHoja[nombreHoja].values.push(valorAEscribir);
 
       currentDate.setDate(currentDate.getDate() + 1);
       diaIndex++;
     }
 
-    // Normalizador local para esta función
+    // 2. Normalización de seguridad
     const normalizarNombre = (n) => String(n).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
     let nombreBuscado = normalizarNombre(nombreChofer);
 
-    // Escribimos los datos en cada hoja afectada
+    // 3. Escritura en ID_SPREADSHEET_DIAGRAMAS
     for (let nombreHoja in updatesPorHoja) {
       let hoja = ssDiag.getSheetByName(nombreHoja);
       if (!hoja) continue; 
       
-      // Buscamos en la columna B (Nombres)
       let dataNombres = hoja.getRange("B6:B" + hoja.getLastRow()).getValues();
       let rowTarget = -1;
       
       for (let i = 0; i < dataNombres.length; i++) {
         if (normalizarNombre(dataNombres[i][0]) === nombreBuscado) { 
-          rowTarget = i + 6; // Offset por las cabeceras (i empieza en 0 -> Fila 6 real)
+          rowTarget = i + 6; 
           break; 
         }
       }
       
       if (rowTarget !== -1) {
         let chunk = updatesPorHoja[nombreHoja];
-        // Escribimos TODOS los días de ese mes de un solo golpe (matriz de 1 fila x N columnas)
         hoja.getRange(rowTarget, chunk.startCol, 1, chunk.values.length).setValues([chunk.values]);
       }
     }
+
+    // 4. Registro de Auditoría (Asegurando que el usuario no sea nulo)
+    let operador = usuarioActivo ? usuarioActivo : "Usuario No Enviado";
+    registrarLog(operador, "CAMBIO_ESTADO", {
+      chofer: nombreChofer,
+      rango: `${fechaInicioIso} / ${fechaFinIso}`,
+      estado: Array.isArray(nuevoEstado) ? "SECUENCIA_MULTIPLE" : nuevoEstado
+    });
 
     generarJSONBase_Frecuente();
     return { success: true };
@@ -620,8 +661,6 @@ function actualizarCacheG3_Estaticos() {
   
   ssMaestro.toast("Datos estáticos, Vacaciones y Legajos actualizados.", "G3 OK");
 }
-
-
 function sincronizarBaseYMovimientos() {
   // --- 1. GESTALT: AGRUPACIÓN DE DEPENDENCIAS (Mapeo de JSON en Col D) ---
   const ssUnidades = SpreadsheetApp.openById("1w86w4I-BMcdtANCBYaMwU03cRL_keMvtY8-fvjYAtF8");
@@ -760,8 +799,6 @@ function sincronizarBaseYMovimientos() {
   
   generarJSONBase_Frecuente(); 
 }
-
-
 function guardarNuevaObservacion(datosFormulario) {
   try {
     const sheet = SpreadsheetApp.openById(ID_SHEET_OBSERVACIONES).getSheetByName('Movimientos');
@@ -773,9 +810,6 @@ function guardarNuevaObservacion(datosFormulario) {
     return { success: true, message: 'Registrado con éxito' };
   } catch (error) { return { success: false, message: error.toString() }; }
 }
-
-
-
 function actualizarCacheViajesCampo() {
   const ID_SHEET_KILOMETROS = '1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM';
   const ssPrincipal = SpreadsheetApp.getActiveSpreadsheet(); 
@@ -891,8 +925,6 @@ function actualizarCacheViajesCampo() {
     ssPrincipal.toast("Error: " + error.message, "❌ Error", -1);
   }
 }
-
-
 function obtenerDatosTDParaFront() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hojaTD = ss.getSheetByName('td');
@@ -942,47 +974,6 @@ function guardarEstadoCheckboxTD(tdId, estado) {
 
   return { success: true };
 }
-
-function actualizarCacheG4_Fotos() {
-  const ssMaestro = SpreadsheetApp.getActiveSpreadsheet();
-  const hojaFotos = ssMaestro.getSheetByName('fotos'); 
-  let hojaCache = ssMaestro.getSheetByName('API_CACHE_BASICO');
-  
-  if (!hojaFotos || !hojaCache) return;
-
-  // Mismo helper que en G3 para extraer el DNI exacto a partir del CUIL
-  function _parseDniExacto(val) {
-    let limpio = String(val).replace(/\D/g, '');
-    if (!limpio) return "";
-    if (limpio.length === 11) return String(parseInt(limpio.substring(2, 10), 10));
-    if (limpio.length === 10) return String(parseInt(limpio.substring(2, 9), 10));
-    return String(parseInt(limpio, 10));
-  }
-
-  let mapaFotos = {};
-  const data = hojaFotos.getDataRange().getValues();
-  
-  for (let i = 0; i < data.length; i++) {
-    let dniExacto = _parseDniExacto(data[i][0]);
-    let urlImgur = String(data[i][1]).trim();
-    
-    // Solo guardamos si tenemos un DNI válido y un link real
-    if (dniExacto && urlImgur && urlImgur.includes('http')) {
-      mapaFotos[dniExacto] = urlImgur;
-    }
-  }
-
-  // Guardamos en la Fila 10 (Índice 9)
-  escribirChunksEnFila(hojaCache, 10, JSON.stringify(mapaFotos));
-  ssMaestro.toast("Caché de Fotos actualizado correctamente.", "G4 OK");
-}
-
-/**
- * ============================================================================
- * SINCRONIZACIÓN EN VIVO: ARCHIVO DIAGRAMAS EXTERNO
- * ============================================================================
- */
-
 // 1. EL INSTALADOR (Ejecutar manualmente SOLO UNA VEZ)
 function instalarTriggerDiagramas() {
   const ID_DIAGRAMAS = ID_SPREADSHEET_DIAGRAMAS; // Usa tu variable global existente
@@ -1003,8 +994,6 @@ function instalarTriggerDiagramas() {
     
   SpreadsheetApp.getActiveSpreadsheet().toast("Trigger de Diagramas instalado OK", "Éxito");
 }
-
-
 // 2. EL ESCUCHADOR (Se dispara automáticamente al editar)
 function alEditarDiagramas(e) {
   // Filtro de seguridad
@@ -1032,11 +1021,6 @@ function alEditarDiagramas(e) {
     }
   }
 }
-
-/**
- * Genera un JSON con los vencimientos de las unidades y lo guarda en caché.
- * Principio de Prägnanz: Estructura lineal, clara y dependencias agrupadas.
- */
 function vencimientosUnidades() {
   // 1. Referencias y Conexiones (Ley de Proximidad)
   const ID_MASTER = '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc';
@@ -1130,4 +1114,49 @@ function mapearVencimientos(patente, jsonVencimientos) {
         vi_tr: record.col_m,   // VI
         ve_tr: record.col_n    // VE
     };
+}
+
+/**
+ * Motor de Auditoría.
+ * @param {string} usuarioResponsable - El ID/Nombre del usuario que envía el frontend.
+ * @param {string} accion - Qué hizo (ej. "CAMBIO_ESTADO").
+ * @param {object} detalles - El JSON con el payload de la acción.
+ */
+function registrarLog(usuarioResponsable, accion, detalles) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheetLogs = ss.getSheetByName("DB_Logs") || ss.insertSheet("DB_Logs");
+
+  // Si por algún error de red no llega el usuario, evitamos que el log se rompa.
+  const usuario = usuarioResponsable || "SESION_PERDIDA";
+
+  const nuevoEvento = { 
+    t: new Date().toISOString(), 
+    a: accion, 
+    d: detalles 
+  };
+  
+  // Buscar la fila correspondiente a este usuario en Columna A
+  const data = sheetLogs.getDataRange().getValues();
+  let rowIndex = data.findIndex(row => String(row[0]).trim() === String(usuario).trim()) + 1;
+  
+  // Si no existe en DB_Logs (primera vez que hace una acción), lo creamos
+  if (rowIndex === 0) {
+    sheetLogs.appendRow([usuario, JSON.stringify([nuevoEvento])]);
+    return;
+  }
+
+  // Lógica de Chunks: Fragmentación horizontal (Límite 45k)
+  let colIndex = 2; 
+  let cell = sheetLogs.getRange(rowIndex, colIndex);
+  let content = cell.getValue();
+
+  while (content && content.toString().length > 44000) {
+    colIndex++;
+    cell = sheetLogs.getRange(rowIndex, colIndex);
+    content = cell.getValue();
+  }
+
+  let logArray = content ? JSON.parse(content) : [];
+  logArray.push(nuevoEvento);
+  cell.setValue(JSON.stringify(logArray));
 }
