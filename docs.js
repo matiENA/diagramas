@@ -88,7 +88,6 @@ function actualizarCacheG2_Vencimientos() {
   escribirChunksEnFila(hojaCache, 5, JSON.stringify(mapaCerts));
   ssMaestro.toast("Vencimientos actualizados (Desde tab DNI)", "G2 OK");
 }
-
 function generarJSONAptosMedicos() {
   const ssMaestro = SpreadsheetApp.getActiveSpreadsheet();
   let mapaAptos = {};
@@ -244,7 +243,6 @@ function generarJSONObservacionesGlobal() {
     
   } catch(e) { console.error("Error generando JSON de Observaciones:", e); }
 }
-
 function guardarDocumentos(nombre, exVen, licVen, certVen) {
   try {
     let nBuscado = String(nombre).trim().toLowerCase();
@@ -325,11 +323,45 @@ function guardarDocumentos(nombre, exVen, licVen, certVen) {
     return { success: true };
   } catch (e) { return { success: false, error: e.toString() }; }
 }
+function actualizarCacheG4_Fotos() {
+  const ssMaestro = SpreadsheetApp.getActiveSpreadsheet();
+  const hojaFotos = ssMaestro.getSheetByName('fotos'); 
+  let hojaCache = ssMaestro.getSheetByName('API_CACHE_BASICO');
+  
+  if (!hojaFotos || !hojaCache) return;
 
-  function updatedocs() {
+  // Mismo helper que en G3 para extraer el DNI exacto a partir del CUIL
+  function _parseDniExacto(val) {
+    let limpio = String(val).replace(/\D/g, '');
+    if (!limpio) return "";
+    if (limpio.length === 11) return String(parseInt(limpio.substring(2, 10), 10));
+    if (limpio.length === 10) return String(parseInt(limpio.substring(2, 9), 10));
+    return String(parseInt(limpio, 10));
+  }
+
+  let mapaFotos = {};
+  const data = hojaFotos.getDataRange().getValues();
+  
+  for (let i = 0; i < data.length; i++) {
+    let dniExacto = _parseDniExacto(data[i][0]);
+    let urlImgur = String(data[i][1]).trim();
+    
+    // Solo guardamos si tenemos un DNI válido y un link real
+    if (dniExacto && urlImgur && urlImgur.includes('http')) {
+      mapaFotos[dniExacto] = urlImgur;
+    }
+  }
+
+  // Guardamos en la Fila 10 (Índice 9)
+  escribirChunksEnFila(hojaCache, 10, JSON.stringify(mapaFotos));
+  ssMaestro.toast("Caché de Fotos actualizado correctamente.", "G4 OK");
+}
+
+function updatedocs() {
     actualizarCacheG2_Vencimientos();
     actualizarCacheG3_Estaticos();
     generarJSONObservacionesGlobal();
     generarJSONAptosMedicos();
+    actualizarCacheG4_Fotos()
   }
 
