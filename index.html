@@ -283,6 +283,25 @@ function verificarSesion() {
     }
 }
 
+function manejarLogin(usuarioIngresado, password) {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res.success) {
+        // GUARDAR EL USUARIO: Aquí es donde el sistema "empieza a recordar"
+        localStorage.setItem('usuarioActivo', usuarioIngresado);
+        
+        // Opcional: Guardarlo en una variable global para acceso rápido
+        window.datosGlobales.usuario = usuarioIngresado;
+        
+        cerrarModalLogin();
+        mostrarDashboard();
+      } else {
+        alert("Credenciales incorrectas");
+      }
+    })
+    .validarLogin(usuarioIngresado, password);
+}
+
 function procesarLogin() {
     const user = document.getElementById('login-user').value.trim();
     const pass = document.getElementById('login-pass').value.trim();
@@ -310,6 +329,8 @@ function procesarLogin() {
             // Guardamos la sesión
             sessionStorage.setItem('eor_session_token', res.token);
             sessionStorage.setItem('eor_session_role', res.rol);
+            // 👉 NUEVO: El navegador memoriza quién hizo login
+            localStorage.setItem('usuarioActivo', user); 
             desbloquearSistema();
         } else {
             errorBox.innerText = res.error || "Acceso denegado.";
@@ -936,16 +957,26 @@ function filtrarTabla() {
         });
 
         const dashboard = document.getElementById('dashboard');
-
-        if (vistaActual === 'individual') {
-            dashboard.innerHTML = '<div id=\"contenedor-individual\" class=\"w-full\"></div>';
-            renderizarVistaIndividual(datosGlobales, document.getElementById('contenedor-individual'));
-            if(conductorSeleccionadoId) mostrarDetalleConductor(conductorSeleccionadoId);
+            if (vistaActual === 'individual') {
+            // 👉 NUEVO: Verificamos si el esqueleto ya existe para no destruirlo
+            if (!document.getElementById('contenedor-individual')) {
+                dashboard.innerHTML = '<div id="contenedor-individual" class="w-full"></div>';
+                renderizarVistaIndividual(datosGlobales, document.getElementById('contenedor-individual'));
+            } else {
+                // Si ya existe (ej: por el polling), solo actualizamos la lista desplegable en silencio
+                renderizarOpcionesIndividual(filtrados);
+            }
+            
+            if(conductorSeleccionadoId) mostrarDetalleConductor(conductorSeleccionadoId, true);
+            
         } else if (vistaActual === 'metricas') {
-            dashboard.innerHTML = '<div id=\"contenedor-metricas\" class=\"w-full\"></div>';
+            // 👉 NUEVO: Misma protección para la vista de métricas
+            if (!document.getElementById('contenedor-metricas')) {
+                dashboard.innerHTML = '<div id="contenedor-metricas" class="w-full"></div>';
+            }
             renderizarVistaMetricas(document.getElementById('contenedor-metricas'));
-        } else {
-            if (!document.getElementById('contenedor-lista-principal')) {
+            
+        } else {            if (!document.getElementById('contenedor-lista-principal')) {
                 dashboard.innerHTML = `
                     <div class="grid grid-cols-12 gap-6 items-start w-full">
                         <div id="contenedor-lista-principal" class="col-span-12 lg:col-span-9 w-full min-w-0"></div>
@@ -1914,10 +1945,24 @@ try {
         </div>
         `;
         
-        contenedor.innerHTML = html + getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert);
+contenedor.innerHTML = html + getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert);
         renderizarHistorialEventos(chofer.nom);
-    };
 
+        // 👉 SOLUCIÓN: Auto-reconstruir el panel de acciones y el halo de selección
+        if (mantenerSeleccion && seleccionInicioIso && currentEndIso) {
+            setTimeout(() => {
+                // Evaluamos la dirección de la selección
+                let d1 = new Date(seleccionInicioIso + "T12:00:00"); 
+                let d2 = new Date(currentEndIso + "T12:00:00"); 
+                let start = d1 <= d2 ? seleccionInicioIso : currentEndIso; 
+                let end = d1 <= d2 ? currentEndIso : seleccionInicioIso; 
+                
+                // Volvemos a pintar las celdas y abrimos el panel con la data actualizada
+                pintarCeldas(start, end); 
+                mostrarPanelAcciones(conductorSeleccionadoId, start, end); 
+            }, 50); // El delay garantiza que el motor del navegador ya pintó el DOM base
+        }
+    };
 
     
 function getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert) {
@@ -2441,12 +2486,15 @@ window.guardarEstadoDesdeRango = function(safeId, startIso, endIso) {
             }
         }
 
+       const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+
         const payload = {
             action: 'actualizarEstado',
             nombre: chofer.nom,
             startIso: startIso,
             endIso: endIso,
-            est: payloadEst
+            est: payloadEst,
+            usuario: usuarioLogueado // 👉 NUEVO: Inyectamos la firma
         };
 
         fetch(API_URL, {
@@ -3030,14 +3078,17 @@ window.guardarParametros = function() {
         }
         // ---------------------------------------------
 
-const payload = {
-  metodo: "actualizarEstado",
-  nombreChofer: chofer,
-  fechaInicioIso: fechaInicio,
-  fechaFinIso: fechaFin,
-  nuevoEstado: estado,
-  usuarioActivo: datosGlobales.usuarioActivo // Asegúrate de incluir esta llave
-};
+// 👉 NUEVO: Recuperamos la identidad
+        const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+
+        const payload = {
+            action: 'actualizarEstado', // Coincide con el doPost
+            nombre: chofer.nom,         // Variable correcta del objeto chofer
+            startIso: fInicio,          // Usa la variable fInicio definida arriba
+            endIso: fFin,               // Usa la variable fFin definida arriba
+            est: payloadEst,            // Usa la secuencia calculada (payloadEst)
+            usuario: usuarioLogueado    // 👉 NUEVO: Inyectamos la firma
+        };
 
         fetch(API_URL, {
             method: 'POST',
@@ -3062,28 +3113,23 @@ const payload = {
     function mostrarCargando(m) { document.getElementById('loader-global').style.display = m ? 'flex' : 'none'; document.getElementById('dashboard').style.opacity = m ? '0.3' : '1'; }
     function mostrarErrorGlobal(msg) { showToast("Error de conexión: " + msg, "error"); mostrarCargando(false); }
 
-    // En tu index.html, al momento de actualizar un estado
 async function enviarCambioEstado(chofer, fIni, fFin, estado) {
-  // Obtienes el usuario logueado de tu estado global o localStorage
-  const usuarioActual = localStorage.getItem('usuarioLogueado') || datosGlobales.usuario;
+  // Recuperamos la identidad guardada
+  const usuarioParaLog = localStorage.getItem('usuarioActivo');
 
   const payload = {
-    metodo: "actualizarEstado",
-    usuario: usuarioActual, // <- La pieza clave
-    datos: {
-      nombreChofer: chofer,
-      fechaInicio: fIni,
-      fechaFin: fFin,
-      nuevoEstado: estado
-    }
+    action: "actualizarEstado", // Usamos 'action' para que coincida con tu doPost
+    nombre: chofer,
+    startIso: fIni,
+    endIso: fFin,
+    est: estado,
+    usuario: usuarioParaLog // <--- LA FIRMA DEL USUARIO
   };
 
-  const response = await fetch(API_URL, {
+  await fetch(API_URL, {
     method: 'POST',
     body: JSON.stringify(payload)
   });
-  
-  // ... manejo de UI ...
 }
 
   </script>
