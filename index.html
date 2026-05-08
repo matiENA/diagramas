@@ -72,9 +72,20 @@
     </div>
 </div>
 
-  <header class="max-w-7xl mx-auto w-full pt-6 pb-2 px-4 sm:px-6">
-    <h1 class="text-2xl sm:text-3xl font-bold text-primary tracking-tight">Estado de Conductores</h1>
-    <p class="text-xs sm:text-sm font-normal text-gray-500 mt-1">Gestión de diagramas y alertas de actividad</p>
+<header class="max-w-7xl mx-auto w-full pt-6 pb-2 px-4 sm:px-6 flex justify-between items-start sm:items-center">
+    <!-- Agrupación Izquierda: Título y Subtítulo -->
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold text-primary tracking-tight">Estado de Conductores</h1>
+      <p class="text-xs sm:text-sm font-normal text-gray-500 mt-1">Gestión de diagramas y alertas de actividad</p>
+    </div>
+    
+    <!-- Agrupación Derecha: Acción de Salida -->
+    <button onclick="cerrarSesion()" title="Cerrar Sesión" class="group flex items-center gap-2 bg-white border border-gray-200 text-gray-500 hover:text-red-600 hover:bg-red-50 hover:border-red-200 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0">
+      <svg class="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+      </svg>
+      <span class="hidden sm:block uppercase tracking-wider">Cerrar Sesión</span>
+    </button>
   </header>
 
   <nav class="max-w-7xl mx-auto w-full px-4 sm:px-6 mb-4 mt-2">
@@ -176,6 +187,35 @@
   </div>
 
   <script>
+
+    window.cerrarSesion = function() {
+    // 1. Limpiar credenciales de la memoria de sesión
+    sessionStorage.removeItem('eor_session_token');
+    sessionStorage.removeItem('eor_session_role');
+    
+    // (Opcional) Si no quieres que el sistema recuerde al usuario tras salir, descomenta esto:
+    // localStorage.removeItem('usuarioActivo'); 
+
+    // 2. Restaurar la vista del muro de login (Transición suave)
+    const wall = document.getElementById('login-wall');
+    wall.classList.remove('hidden');
+    
+    // Forzamos un reflow del navegador antes de quitar las clases de opacidad 
+    // para asegurar que la animación de "fade-in" se ejecute correctamente.
+    void wall.offsetWidth; 
+    wall.classList.remove('opacity-0', 'pointer-events-none');
+
+    // 3. Limpiar inputs del muro de login por seguridad
+    const passInput = document.getElementById('login-pass');
+    if(passInput) passInput.value = '';
+    
+    // 4. Purga de datos (Gestalt: Prägnanz - Retorno al estado Cero)
+    // Evita que los datos queden renderizados por detrás del muro
+    window.datosGlobales = [];
+    document.getElementById('dashboard').innerHTML = '';
+    
+    showToast("Sesión cerrada correctamente.", "success");
+};
 
     // --- [NUEVO] SINCRONIZACIÓN DE BACKEND ---
 window.sincronizarBackend = function() {
