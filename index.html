@@ -2091,6 +2091,44 @@ if (apto) {
     }
 
 window.tdGlobalData = { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, extra: {} };
+window.formatTDDataForExport = function() {
+    const estados = tdGlobalData.estados || {};
+    const extra = tdGlobalData.extra || {};
+
+    // 1. 'TDS Diaria': Array of objects with audit grouping
+    const tdsDiaria = Object.keys(estados).map(tdId => {
+        const state = estados[tdId];
+        // Handle both new nested structure and old boolean structure for robustness
+        let checked = false;
+        let user = 'S/U';
+
+        if (state && typeof state === 'object' && state.audit) {
+            checked = !!state.audit.checked;
+            user = state.audit.user || 'S/U';
+        } else {
+            checked = !!state;
+        }
+
+        return {
+            tdId: tdId,
+            audit: {
+                checked: checked,
+                user: user
+            }
+        };
+    });
+
+    // 2. 'Hoja Ruta N': Map of codes
+    const hojaRutaN = extra;
+
+    const result = {
+        'TDS Diaria': tdsDiaria,
+        'Hoja Ruta N': hojaRutaN
+    };
+
+    return JSON.stringify(result);
+};
+
 
 const normalizarNombreTD = (nom) => (nom||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
@@ -2126,7 +2164,8 @@ window.generarTDsEsquinaFront = function(nombreChofer, dniChofer, fechaIso) {
     let html = `<div class="absolute bottom-1 left-1 flex flex-wrap gap-1 z-10 w-[80%]" id="dots-td-${fechaIso}">`; 
 
     tdsDia.forEach(td => {
-        let checked = tdGlobalData.estados[td.td] === true;
+        let state = tdGlobalData.estados[td.td];
+        let checked = (state === true) || (state && state.audit && state.audit.checked === true);
         if (checked) {
             html += `<span class="w-1.5 h-1.5 rounded-full shadow-sm" style="background-color: ${td.hex};" title="TD: ${td.td} (${td.origen}) - Entregado"></span>`;
         } else {
@@ -2140,11 +2179,24 @@ window.generarTDsEsquinaFront = function(nombreChofer, dniChofer, fechaIso) {
 
 
 window.toggleTDDesdeModal = function(event, tdId, hexOriginal, safeId, isoStr) {
-    if(event) event.stopPropagation();
+    if(event) event.stopPropagation();
 
-    let estadoActual = tdGlobalData.estados[tdId] === true;
-    let nuevoEstado = !estadoActual;
-    tdGlobalData.estados[tdId] = nuevoEstado;
+    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+    let estadoActual = (tdGlobalData.estados[tdId] && tdGlobalData.estados[tdId].audit && tdGlobalData.estados[tdId].audit.checked) === true;
+
+    // Fallback para datos viejos (booleanos) si existieran
+    if (tdGlobalData.estados[tdId] === true) estadoActual = true;
+    if (tdGlobalData.estados[tdId] === false) estadoActual = false;
+
+    let nuevoEstado = !estadoActual;
+
+    // Actualizamos localmente con la nueva estructura
+    tdGlobalData.estados[tdId] = {
+        audit: {
+            checked: nuevoEstado,
+            user: usuarioLogueado
+        }
+    };
 
     // A. Actualizar Checkbox del Modal
     let el = document.getElementById(`modal-td-ui-${tdId}`);
@@ -2182,16 +2234,17 @@ window.toggleTDDesdeModal = function(event, tdId, hexOriginal, safeId, isoStr) {
         }
     });
 
-    // C. Enviar a Backend
-    fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ 
-            action: 'toggleEstadoTD', 
-            tdId: tdId, 
+    // C. Enviar a Backend
+    fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'toggleEstadoTD',
+            tdId: tdId,
             estado: nuevoEstado,
+            usuario: usuarioLogueado,
             codigosExtra: valoresAdicionales // Se envían los códigos al backend
         })
-    }).then(r => r.json()).then(res => {
+    }).then(r => r.json()).then(res => {
         if (!res.success) throw new Error();
     }).catch(err => {
         showToast("Error guardando estado TD. Revise su conexión.", "error");
@@ -2389,7 +2442,8 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
             <div class="flex flex-wrap gap-3">`;
         
         tdsEnRango.forEach(td => {
-            let checked = tdGlobalData.estados[td.td] === true;
+            let state = tdGlobalData.estados[td.td];
+        let checked = (state === true) || (state && state.audit && state.audit.checked === true);
             let bgHex = checked ? td.hex : 'transparent';
             let textHex = checked ? '#ffffff' : '#4b5563';
             let borderHex = checked ? td.hex : '#d1d5db';

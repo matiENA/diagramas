@@ -296,37 +296,46 @@ function actualizarCacheTDsLivianoYEuro() {
 function obtenerDatosTDParaFront() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hoja = ss.getSheetByName('td');
-  if (!hoja) return { estados: {}, codigosExtra: {} };
+  if (!hoja) return { estados: {}, codigosExtra: {} };function leerFila(fila) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const hoja = ss.getSheetByName('td');
+  if (!hoja) return "";
+  let vals = hoja.getRange(fila, 1, 1, hoja.getLastColumn()).getValues()[0];
+  return vals.join("").replace(/^'/, "");
+}
 
-  // Función interna para leer filas con chunks (A, B, C...)
-  const leerFila = (fila) => {
-    let vals = hoja.getRange(fila, 1, 1, hoja.getLastColumn()).getValues()[0];
-    return vals.join("").replace(/^'/, ""); // Quitamos la comilla de escape de Sheets
-  };
-
+function obtenerDatosTDParaFront() {
   return {
     campo: JSON.parse(leerFila(1) || "{}"),
     infinia: JSON.parse(leerFila(2) || "{}"),
     liviano: JSON.parse(leerFila(3) || "{}"),
     euro: JSON.parse(leerFila(4) || "{}"),
-    estados: JSON.parse(hoja.getRange("A5").getValue() || "{}"),      // Checkboxes
-    codigosExtra: JSON.parse(hoja.getRange("A6").getValue() || "{}") // [NUEVO] Códigos 6 dígitos
+    estados: JSON.parse(leerFila(5) || "{}"),      // Checkboxes
+    codigosExtra: JSON.parse(leerFila(6) || "{}") // [NUEVO] Códigos 6 dígitos
   };
 }
 
-function guardarEstadoCheckboxTD(tdId, estado, codigosExtra) {
+function guardarEstadoCheckboxTD(tdId, estado, usuario, codigosExtra) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const hoja = ss.getSheetByName('td');
     if (!hoja) throw new Error("No se encontró la pestaña 'td'");
 
     // 1. Manejar Estados (Fila 5)
-    let estados = JSON.parse(hoja.getRange("A5").getValue() || "{}");
-    estados[tdId] = estado;
-    hoja.getRange("A5").setValue(JSON.stringify(estados));
+    let estados = JSON.parse(leerFila(5) || "{}");
+
+    // Almacenamos con el nuevo formato auditado
+    estados[tdId] = {
+      audit: {
+        checked: estado,
+        user: usuario || "S/U"
+      }
+    };
+
+    escribirChunksEnFila(hoja, 5, JSON.stringify(estados));
 
     // 2. Manejar Códigos (Fila 6)
-    let todosLosCodigos = JSON.parse(hoja.getRange("A6").getValue() || "{}");
+    let todosLosCodigos = JSON.parse(leerFila(6) || "{}");
     
     if (estado === true && codigosExtra && codigosExtra.length > 0) {
       todosLosCodigos[tdId] = codigosExtra;
@@ -334,7 +343,7 @@ function guardarEstadoCheckboxTD(tdId, estado, codigosExtra) {
       // Si se apaga el checkbox, limpiamos los códigos para no ocupar espacio innecesario
       delete todosLosCodigos[tdId];
     }
-    hoja.getRange("A6").setValue(JSON.stringify(todosLosCodigos));
+    escribirChunksEnFila(hoja, 6, JSON.stringify(todosLosCodigos));
 
     return { success: true };
   } catch (e) {
@@ -349,7 +358,7 @@ function guardarDatosExtraBackend(tdId, valores) {
     if (!hoja) throw new Error("No se encontró la pestaña 'td'");
 
     // Leer Códigos actuales de la fila 6
-    let todosLosCodigos = JSON.parse(hoja.getRange("A6").getValue() || "{}");
+    let todosLosCodigos = JSON.parse(leerFila(6) || "{}");
     
     if (valores && valores.length > 0) {
       todosLosCodigos[tdId] = valores;
@@ -357,7 +366,7 @@ function guardarDatosExtraBackend(tdId, valores) {
       delete todosLosCodigos[tdId];
     }
     
-    hoja.getRange("A6").setValue(JSON.stringify(todosLosCodigos));
+    escribirChunksEnFila(hoja, 6, JSON.stringify(todosLosCodigos));
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };

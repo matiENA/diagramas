@@ -925,56 +925,6 @@ function actualizarCacheViajesCampo() {
     ssPrincipal.toast("Error: " + error.message, "❌ Error", -1);
   }
 }
-function obtenerDatosTDParaFront() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const hojaTD = ss.getSheetByName('td');
-  if (!hojaTD) return { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{} };
-
-    const leerFila = (numFila) => {
-      let values = hojaTD.getRange(numFila + ":" + numFila).getValues()[0];
-      let jsonStr = values.filter(String).map(c => String(c).replace(/^'/, "")).join("");
-      try { return jsonStr ? JSON.parse(jsonStr) : {}; } catch(e) { return {}; }
-    };
-
-  return {
-    campo: leerFila(1),
-    infinia: leerFila(2),
-    liviano: leerFila(3),
-    euro: leerFila(4),
-    estados: leerFila(12) // Respuestas de los checkboxes
-  };
-}
-
-function guardarEstadoCheckboxTD(tdId, estado) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let hojaTD = ss.getSheetByName('td');
-  if (!hojaTD) hojaTD = ss.insertSheet('td');
-
-  // Leer estado actual de la Fila 12
-  let dataCache = hojaTD.getRange("12:12").getValues()[0];
-  let jsonStr = dataCache.filter(String).map(c => String(c).replace(/^'/, "")).join("");
-  let estadosObj = {};
-  if (jsonStr) try { estadosObj = JSON.parse(jsonStr); } catch(e) {}
-
-  // Actualizar el estado del TD específico
-  estadosObj[tdId] = estado;
-
-  // Guardar aplicando Chunking Horizontal (45k Limit)
-  let newJsonStr = JSON.stringify(estadosObj);
-  let chunks = [];
-  const chunkSize = 45000;
-  for (let i = 0; i < newJsonStr.length; i += chunkSize) {
-    chunks.push("'" + newJsonStr.substring(i, i + chunkSize));
-  }
-
-  hojaTD.getRange("12:12").clearContent();
-  if (chunks.length > 0) {
-    hojaTD.getRange(12, 1, 1, chunks.length).setValues([chunks]);
-  }
-
-  return { success: true };
-}
-// 1. EL INSTALADOR (Ejecutar manualmente SOLO UNA VEZ)
 function instalarTriggerDiagramas() {
   const ID_DIAGRAMAS = ID_SPREADSHEET_DIAGRAMAS; // Usa tu variable global existente
   
