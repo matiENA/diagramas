@@ -579,13 +579,13 @@ window.mapearVencimientos = function(patente, jsonVencimientos) {
 
     function getSrvTheme(srvName) {
         let name = (srvName || '').toUpperCase().trim();
-        if (name.includes('LIV')) return { solidBg: 'bg-[#B7B7B7]', solidText: 'text-gray-900', softBg: 'bg-[#B7B7B7]/15', softText: 'text-gray-700', border: 'border-[#B7B7B7]/40', hoverBg: 'hover:bg-[#B7B7B7]/25' };
-        if (name.includes('MET')) return { solidBg: 'bg-[#FF0000]', solidText: 'text-white', softBg: 'bg-[#FF0000]/10', softText: 'text-[#cc0000]', border: 'border-[#FF0000]/30', hoverBg: 'hover:bg-[#FF0000]/20' };
-        if (name.includes('CAMPO')) return { solidBg: 'bg-[#999999]', solidText: 'text-white', softBg: 'bg-[#999999]/10', softText: 'text-[#666666]', border: 'border-[#999999]/40', hoverBg: 'hover:bg-[#999999]/20' };
-        if (name.includes('ABAST')) return { solidBg: 'bg-[#FF00FF]', solidText: 'text-white', softBg: 'bg-[#FF00FF]/10', softText: 'text-[#b300b3]', border: 'border-[#FF00FF]/30', hoverBg: 'hover:bg-[#FF00FF]/20' };
-        if (name.includes('GLP')) return { solidBg: 'bg-[#FF9900]', solidText: 'text-white', softBg: 'bg-[#FF9900]/10', softText: 'text-[#cc7a00]', border: 'border-[#FF9900]/30', hoverBg: 'hover:bg-[#FF9900]/20' };
-        if (name.includes('GRAL')) return { solidBg: 'bg-[#C27BA0]', solidText: 'text-white', softBg: 'bg-[#C27BA0]/10', softText: 'text-[#9e577c]', border: 'border-[#C27BA0]/30', hoverBg: 'hover:bg-[#C27BA0]/20' };
-        if (name.includes('YPF')) return { solidBg: 'bg-[#005c9a]', solidText: 'text-white', softBg: 'bg-[#005c9a]/10', softText: 'text-[#005c9a]', border: 'border-[#005c9a]/30', hoverBg: 'hover:bg-[#005c9a]/20' };
+        if (name.includes('LIV')) return { solidBg: 'bg-[#FFFFFF]', solidText: 'text-gray-900', softBg: 'bg-white', softText: 'text-gray-500', border: 'border-gray-200', hoverBg: 'hover:bg-gray-100' };
+        if (name.includes('MET')) return { solidBg: 'bg-[#FFCC80]', solidText: 'text-gray-900', softBg: 'bg-[#FFCC80]/15', softText: 'text-[#996633]', border: 'border-[#FFCC80]/40', hoverBg: 'hover:bg-[#FFCC80]/25' };
+        if (name.includes('CAMPO')) return { solidBg: 'bg-[#FFFF99]', solidText: 'text-gray-900', softBg: 'bg-[#FFFF99]/15', softText: 'text-[#808000]', border: 'border-[#FFFF99]/40', hoverBg: 'hover:bg-[#FFFF99]/25' };
+        if (name.includes('ABAST')) return { solidBg: 'bg-[#D9D9D9]', solidText: 'text-gray-900', softBg: 'bg-[#D9D9D9]/15', softText: 'text-gray-600', border: 'border-gray-300', hoverBg: 'hover:bg-[#D9D9D9]/25' };
+        if (name.includes('GLP')) return { solidBg: 'bg-[#CC99FF]', solidText: 'text-gray-900', softBg: 'bg-[#CC99FF]/15', softText: 'text-[#663399]', border: 'border-[#CC99FF]/40', hoverBg: 'hover:bg-[#CC99FF]/25' };
+        if (name.includes('GRAL')) return { solidBg: 'bg-[#F4CCCC]', solidText: 'text-gray-900', softBg: 'bg-[#F4CCCC]/15', softText: 'text-[#993333]', border: 'border-[#F4CCCC]/40', hoverBg: 'hover:bg-[#F4CCCC]/25' };
+        if (name.includes('YPF')) return { solidBg: 'bg-[#D9D9D9]', solidText: 'text-gray-900', softBg: 'bg-[#D9D9D9]/15', softText: 'text-gray-600', border: 'border-gray-300', hoverBg: 'hover:bg-[#D9D9D9]/25' };
         if (name.includes('PASIVO')) return { solidBg: 'bg-[#64748b]', solidText: 'text-white', softBg: 'bg-slate-100', softText: 'text-slate-600', border: 'border-slate-300', hoverBg: 'hover:bg-slate-200' };
         return { solidBg: 'bg-primary', solidText: 'text-white', softBg: 'bg-blue-50', softText: 'text-primary', border: 'border-blue-200', hoverBg: 'hover:bg-blue-100' };
     }
@@ -2108,11 +2108,11 @@ window.obtenerTDsPorDia = function(nombreChofer, dniChofer, fechaIso) {
     let fechaComparar = `${p[2]}/${p[1]}/${p[0]}`; 
 
     if(tdGlobalData.campo[nKey])   
-        tdGlobalData.campo[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Campo', hex: '#8b5cf6'}));
+        tdGlobalData.campo[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Campo', hex: '#FFFF99'}));
     if(tdGlobalData.infinia[dKey]) 
         tdGlobalData.infinia[dKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Infinia', hex: '#06b6d4'}));
     if(tdGlobalData.liviano[nKey]) 
-        tdGlobalData.liviano[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Liviano', hex: '#10b981'}));
+        tdGlobalData.liviano[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Liviano', hex: '#FFFFFF'}));
     if(tdGlobalData.euro[nKey])    
         tdGlobalData.euro[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Euro', hex: '#14b8a6'}));
 
