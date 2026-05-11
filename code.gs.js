@@ -600,15 +600,17 @@ function actualizarCacheG3_Estaticos() {
     if (sheetLegajos) {
       const dataLeg = sheetLegajos.getDataRange().getValues();
       
+      // Ajuste de fila inicial: revisa si tus datos empiezan en fila 4 como en el CSV (donde la cabecera real está ahí) 
+      // Si el script funcionaba empezando desde i=1, mantenlo así.
       for (let i = 1; i < dataLeg.length; i++) {
-        // [NUEVO] Extracción de Legajo (Columna B = índice 1)
-        let legajo = String(dataLeg[i][1] || "").trim(); 
         
-        let nombre = String(dataLeg[i][2] || "").trim().toLowerCase(); // Columna C
-        let dni = _parseDni(dataLeg[i][3]);                            // Columna D
-        let telefonoSec = String(dataLeg[i][4] || "").trim();          // Columna E
-        let email = String(dataLeg[i][5] || "").trim();                // Columna F
-        let fechaAltaRaw = dataLeg[i][11];                             // Columna L
+        // [ACTUALIZADO] Todos los índices restados en 1 por el corrimiento de columnas
+        let legajo = String(dataLeg[i][0] || "").trim();               // Columna A
+        let nombre = String(dataLeg[i][1] || "").trim().toLowerCase(); // Columna B
+        let dni = _parseDni(dataLeg[i][2]);                            // Columna C
+        let telefonoSec = String(dataLeg[i][3] || "").trim();          // Columna D
+        let email = String(dataLeg[i][4] || "").trim();                // Columna E
+        let fechaAltaRaw = dataLeg[i][10];                             // Columna K
         
         let fechaAltaFormateada = fechaAltaRaw instanceof Date ? 
                                   fechaAltaRaw.toLocaleDateString('es-AR') : String(fechaAltaRaw || "");
@@ -661,6 +663,7 @@ function actualizarCacheG3_Estaticos() {
   
   ssMaestro.toast("Datos estáticos, Vacaciones y Legajos actualizados.", "G3 OK");
 }
+
 function sincronizarBaseYMovimientos() {
   // --- 1. GESTALT: AGRUPACIÓN DE DEPENDENCIAS (Mapeo de JSON en Col D) ---
   const ssUnidades = SpreadsheetApp.openById("1w86w4I-BMcdtANCBYaMwU03cRL_keMvtY8-fvjYAtF8");
