@@ -2182,16 +2182,20 @@ window.toggleTDDesdeModal = function(event, tdId, hexOriginal, safeId, isoStr) {
         }
     });
 
-    // C. Enviar a Backend
-    fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ 
-            action: 'toggleEstadoTD', 
-            tdId: tdId, 
-            estado: nuevoEstado,
-            codigosExtra: valoresAdicionales // Se envían los códigos al backend
-        })
-    }).then(r => r.json()).then(res => {
+
+// C. Enviar a Backend
+const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida"; // 👉 NUEVO: Capturar usuario
+
+fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify({ 
+        action: 'toggleEstadoTD', 
+        tdId: tdId, 
+        estado: nuevoEstado,
+        codigosExtra: valoresAdicionales,
+        usuario: usuarioLogueado // 👉 NUEVO: Enviar firma al backend
+    })
+}).then(r => r.json()).then(res => {
         if (!res.success) throw new Error();
     }).catch(err => {
         showToast("Error guardando estado TD. Revise su conexión.", "error");
@@ -2238,12 +2242,20 @@ window.guardarDatosExtraTD = function(tdId) {
         inp.classList.add('opacity-50');
     });
 
-    if (!tdGlobalData.extra) tdGlobalData.extra = {};
-    tdGlobalData.extra[tdId] = valores;
+// Buscar este bloque dentro de guardarDatosExtraTD:
+if (!tdGlobalData.extra) tdGlobalData.extra = {};
+tdGlobalData.extra[tdId] = valores;
+
+    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida"; // 👉 NUEVO
 
     fetch(API_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'actualizarExtraTD', tdId: tdId, valores: valores })
+        body: JSON.stringify({ 
+            action: 'actualizarExtraTD', 
+            tdId: tdId, 
+            valores: valores,
+            usuario: usuarioLogueado // 👉 NUEVO
+        })
     }).then(r => r.json()).then(res => {
         if (!res.success) {
             showToast("Error al guardar la Hoja de Ruta", "error");
