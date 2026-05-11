@@ -2126,11 +2126,23 @@ window.generarTDsEsquinaFront = function(nombreChofer, dniChofer, fechaIso) {
     let html = `<div class="absolute bottom-1 left-1 flex flex-wrap gap-1 z-10 w-[80%]" id="dots-td-${fechaIso}">`; 
 
     tdsDia.forEach(td => {
-        let checked = tdGlobalData.estados[td.td] === true;
+        let objActual = tdGlobalData.estados[td.td];
+        let checked = false;
+        let titleExtra = ""; // Feedback UX para saber quién lo tocó
+        
+        if (objActual !== undefined) {
+            if (typeof objActual === 'object') {
+                checked = objActual.estado === true;
+                titleExtra = objActual.usuario ? ` [Por: ${objActual.usuario}]` : "";
+            } else {
+                checked = objActual === true; // Soporte datos viejos
+            }
+        }
+
         if (checked) {
-            html += `<span class="w-1.5 h-1.5 rounded-full shadow-sm" style="background-color: ${td.hex};" title="TD: ${td.td} (${td.origen}) - Entregado"></span>`;
+            html += `<span class="w-1.5 h-1.5 rounded-full shadow-sm" style="background-color: ${td.hex};" title="TD: ${td.td} (${td.origen}) - Entregado${titleExtra}"></span>`;
         } else {
-            html += `<span class="w-1.5 h-1.5 rounded-full shadow-sm" style="border: 1px solid ${td.hex}; background-color: transparent;" title="TD: ${td.td} (${td.origen}) - Pendiente"></span>`;
+            html += `<span class="w-1.5 h-1.5 rounded-full shadow-sm" style="border: 1px solid ${td.hex}; background-color: transparent;" title="TD: ${td.td} (${td.origen}) - Pendiente${titleExtra}"></span>`;
         }
     });
 
@@ -2138,79 +2150,80 @@ window.generarTDsEsquinaFront = function(nombreChofer, dniChofer, fechaIso) {
     return html;
 };
 
-
 window.toggleTDDesdeModal = function(event, tdId, hexOriginal, safeId, isoStr) {
-    if(event) event.stopPropagation();
+    if(event) event.stopPropagation();
 
-    let estadoActual = tdGlobalData.estados[tdId] === true;
-    let nuevoEstado = !estadoActual;
-    tdGlobalData.estados[tdId] = nuevoEstado;
+    // 1. Lógica de lectura compatible con el nuevo objeto de estado
+    let objActual = tdGlobalData.estados[tdId];
+    let estadoActual = false;
+    if (objActual !== undefined) {
+        estadoActual = typeof objActual === 'object' ? objActual.estado === true : objActual === true;
+    }
+    
+    let nuevoEstado = !estadoActual;
+    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
 
-    // A. Actualizar Checkbox del Modal
-    let el = document.getElementById(`modal-td-ui-${tdId}`);
-    let icon = document.getElementById(`modal-td-icon-${tdId}`);
-    let extraPanel = document.getElementById(`td-extra-${tdId}`);
+    // 2. Actualizamos la memoria local (caché frontend)
+    tdGlobalData.estados[tdId] = { estado: nuevoEstado, usuario: usuarioLogueado };
 
-    if (el && icon) {
-        el.style.color = nuevoEstado ? '#ffffff' : '#4b5563';
-        el.style.backgroundColor = nuevoEstado ? hexOriginal : 'transparent';
-        icon.innerText = nuevoEstado ? '✓' : '☐';
-        icon.style.color = nuevoEstado ? '#ffffff' : hexOriginal;
-    }
+    // A. Actualizar Checkbox del Modal
+    let el = document.getElementById(`modal-td-ui-${tdId}`);
+    let icon = document.getElementById(`modal-td-icon-${tdId}`);
+    let extraPanel = document.getElementById(`td-extra-${tdId}`);
 
+    if (el && icon) {
+        el.style.color = nuevoEstado ? '#ffffff' : '#4b5563';
+        el.style.backgroundColor = nuevoEstado ? hexOriginal : 'transparent';
+        icon.innerText = nuevoEstado ? '✓' : '☐';
+        icon.style.color = nuevoEstado ? '#ffffff' : hexOriginal;
+    }
 
-    // B. Actualizar Circulito del Calendario Inmediatamente
-    let dotsContainer = document.getElementById(`dots-td-${isoStr}`);
-    if(dotsContainer) {
-        const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
-        if(chofer){
-            let nKey = chofer.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-            let datosDni = dnisGlobales[nKey];
-            let dniChofer = datosDni ? (datosDni.dni || datosDni) : "";
-            dotsContainer.outerHTML = generarTDsEsquinaFront(chofer.nom, dniChofer, isoStr);
-        }
-    }
+    // B. Actualizar Circulito del Calendario Inmediatamente
+    let dotsContainer = document.getElementById(`dots-td-${isoStr}`);
+    if(dotsContainer) {
+        const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
+        if(chofer){
+            let nKey = chofer.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+            let datosDni = dnisGlobales[nKey];
+            let dniChofer = datosDni ? (datosDni.dni || datosDni) : "";
+            dotsContainer.outerHTML = generarTDsEsquinaFront(chofer.nom, dniChofer, isoStr);
+        }
+    }
 
-    // --- [NUEVO] Capturar valores de los inputs dinámicos de 6 dígitos ---
+    // Capturar valores de los inputs dinámicos de 6 dígitos
     let inputsExtra = document.querySelectorAll(`.td-extra-input-${tdId}`);
     let valoresAdicionales = [];
     inputsExtra.forEach(input => {
         let val = input.value.trim();
-        // Solo guardamos si tiene exactamente 6 caracteres y es numérico
-        if (val.length === 6 && !isNaN(val)) { 
-            valoresAdicionales.push(val);
-        }
+        if (val.length === 6 && !isNaN(val)) valoresAdicionales.push(val);
     });
 
-
-// C. Enviar a Backend
-const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida"; // 👉 NUEVO: Capturar usuario
-
-fetch(API_URL, {
-    method: 'POST',
-    body: JSON.stringify({ 
-        action: 'toggleEstadoTD', 
-        tdId: tdId, 
-        estado: nuevoEstado,
-        codigosExtra: valoresAdicionales,
-        usuario: usuarioLogueado // 👉 NUEVO: Enviar firma al backend
-    })
-}).then(r => r.json()).then(res => {
-        if (!res.success) throw new Error();
-    }).catch(err => {
-        showToast("Error guardando estado TD. Revise su conexión.", "error");
-        tdGlobalData.estados[tdId] = estadoActual;
-        if (el && icon) {
-            el.style.backgroundColor = estadoActual ? hexOriginal : 'transparent';
-            el.style.color = estadoActual ? '#ffffff' : '#4b5563';
-            icon.innerText = estadoActual ? '✓' : '☐';
-            icon.style.color = estadoActual ? '#ffffff' : hexOriginal;
-        }
-        if (extraPanel) {
-            extraPanel.className = `bg-gray-50 border-t border-gray-100 p-1.5 ${estadoActual ? 'block' : 'hidden'}`;
-        }
-    });
+    // C. Enviar a Backend con la firma del usuario
+    fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ 
+            action: 'toggleEstadoTD', 
+            tdId: tdId, 
+            estado: nuevoEstado,
+            codigosExtra: valoresAdicionales,
+            usuario: usuarioLogueado // 👉 FIRMA INYECTADA
+        })
+    }).then(r => r.json()).then(res => {
+        if (!res.success) throw new Error();
+    }).catch(err => {
+        showToast("Error guardando estado TD. Revise su conexión.", "error");
+        // Revertir memoria local en caso de error
+        tdGlobalData.estados[tdId] = objActual; 
+        if (el && icon) {
+            el.style.backgroundColor = estadoActual ? hexOriginal : 'transparent';
+            el.style.color = estadoActual ? '#ffffff' : '#4b5563';
+            icon.innerText = estadoActual ? '✓' : '☐';
+            icon.style.color = estadoActual ? '#ffffff' : hexOriginal;
+        }
+        if (extraPanel) extraPanel.className = `bg-gray-50 border-t border-gray-100 p-1.5 ${estadoActual ? 'block' : 'hidden'}`;
+    });
 };
+
 // --> NUEVO: MANEJO DE DATOS EXTRA EN TDs (Gestión Dinámica)
 window.agregarInputTD = function(tdId) {
     const wrapper = document.getElementById(`td-inputs-wrapper-${tdId}`);
@@ -2400,26 +2413,32 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
             </span>
             <div class="flex flex-wrap gap-3">`;
         
-        tdsEnRango.forEach(td => {
-            let checked = tdGlobalData.estados[td.td] === true;
+tdsEnRango.forEach(td => {
+            // Lectura compatible con el nuevo objeto A5
+            let objActual = tdGlobalData.estados[td.td];
+            let checked = false;
+            let tooltipUser = "";
+            
+            if (objActual !== undefined) {
+                if (typeof objActual === 'object') {
+                    checked = objActual.estado === true;
+                    tooltipUser = objActual.usuario ? ` | Por: ${objActual.usuario}` : "";
+                } else {
+                    checked = objActual === true;
+                }
+            }
+
             let bgHex = checked ? td.hex : 'transparent';
             let textHex = checked ? '#ffffff' : '#4b5563';
             let borderHex = checked ? td.hex : '#d1d5db';
             let iconColor = checked ? '#ffffff' : td.hex;
 
-            // Preparar el arreglo de valores guardados para este TD
             let extraArr = tdGlobalData.extra && tdGlobalData.extra[td.td] ? tdGlobalData.extra[td.td] : [];
             if (!Array.isArray(extraArr) || extraArr.length === 0) extraArr = ['']; 
 
-            let inputsHtml = extraArr.map(val => `
-                <input type="text" maxlength="6" placeholder="000000"
-                       class="w-[70px] text-center text-xs border border-gray-300 rounded p-1 outline-none focus:ring-1 focus:ring-indigo-400 font-mono text-gray-700 shadow-inner"
-                       value="${val}" onchange="guardarDatosExtraTD('${td.td}')" oninput="this.value = this.value.replace(/[^0-9]/g, '');" data-td-input="${td.td}">
-            `).join('');
-
-// REEMPLAZAR ESTE BLOQUE DENTRO DE tdsEnRango.forEach
+// Luego el htmlTDs se construye igual, pero le añadimos el tooltipUser al contenedor principal:
 htmlTDs += `
-<div class="flex-shrink-0 flex flex-col border border-gray-200 rounded-xl bg-white shadow-sm w-[150px] transition-all duration-300 hover:shadow-md group" title="${td.origen}">
+<div class="flex-shrink-0 flex flex-col border border-gray-200 rounded-xl bg-white shadow-sm w-[150px] transition-all duration-300 hover:shadow-md group" title="Origen: ${td.origen}${tooltipUser}">
     
     <div class="cursor-pointer p-2 border-b border-gray-100 transition-colors"
          onclick="toggleTDDesdeModal(event, '${td.td}', '${td.hex}', '${safeId}', '${td.iso}')">
