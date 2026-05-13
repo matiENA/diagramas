@@ -33,6 +33,33 @@
     .hover-col-header { background-color: #e5e7eb !important; transition: background-color 0.1s; }
     .hover-col-cell { box-shadow: inset 0 0 0 50px rgba(229, 231, 235, 0.6) !important; transition: box-shadow 0.1s;}
     .hover-int-cell { background-color: #4b5563 !important; color: #ffffff !important; transform: scale(1.15); z-index: 50 !important; border: 2px solid #1f2937 !important; border-radius: 6px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important; position: relative;}
+
+    /* [UPDATE] Refinamiento de contraste y legibilidad (WCAG) */
+.celda-calendario {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Indicadores de TD en la esquina (Círculos con stroke) */
+.td-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    border: 1px solid rgba(0, 0, 0, 0.4); /* Stroke oscuro para contraste en fondos claros */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Estado de Selección (Halo de contraste) */
+.celda-calendario.seleccionada {
+    outline: 3px solid #4f46e5; /* Indigo 600 */
+    outline-offset: 1px;
+    z-index: 20;
+    transform: scale(1.05);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+}
+
+/* Tipografía de contraste dinámico */
+.text-contraste-dark { color: #1e293b; text-shadow: 0 1px 0 rgba(255,255,255,0.4); }
+.text-contraste-light { color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
   </style>
 </head>
 
@@ -1780,8 +1807,7 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
 // 1. Evaluate your unit data BEFORE starting the template string
     let urlFoto = fotosGlobales[dniDelChofer];
     let avatarHtml = '';
-    let commonImgClasses = "w-full h-48 md:h-full min-h-[180px] object-cover rounded-xl shadow-sm border border-gray-200 shrink-0 bg-white";
-    
+    let commonImgClasses = "w-full h-48 md:h-auto aspect-[3/4] object-cover rounded-xl shadow-sm border border-gray-200 shrink-0 bg-white";    
     if (urlFoto) {
         avatarHtml = `<img src="${urlFoto}" referrerpolicy="no-referrer" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(chofer.nom)}&background=e0e7ff&color=19407E&bold=true&size=256'" class="${commonImgClasses}" alt="Foto de ${chofer.nom}">`;
     } else {
@@ -1825,9 +1851,9 @@ try {
     let html = `
     <div class="col-span-12 bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-5 w-full items-stretch">
         
-        <div class="shrink-0 w-full md:w-36 lg:w-48 flex justify-center md:justify-start">
-            ${avatarHtml}
-        </div>
+        <div class="shrink-0 w-full md:w-36 lg:w-48 flex justify-center md:justify-start self-start">
+    ${avatarHtml}
+</div>
 
         <div class="flex flex-col gap-4 w-full flex-1 min-w-0 justify-between">
             
@@ -2107,42 +2133,34 @@ window.obtenerTDsPorDia = function(nombreChofer, dniChofer, fechaIso) {
     let p = fechaIso.split('-');
     let fechaComparar = `${p[2]}/${p[1]}/${p[0]}`; 
 
+    // [UPDATE] Cambio de colores para mejorar el contraste en la UI del calendario
     if(tdGlobalData.campo[nKey])   
-        tdGlobalData.campo[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Campo', hex: '#FFFF99'}));
+        tdGlobalData.campo[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Campo', hex: '#eab308'})); // Antes: #FFFF99
     if(tdGlobalData.infinia[dKey]) 
         tdGlobalData.infinia[dKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Infinia', hex: '#06b6d4'}));
     if(tdGlobalData.liviano[nKey]) 
-        tdGlobalData.liviano[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Liviano', hex: '#FFFFFF'}));
+        tdGlobalData.liviano[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Liviano', hex: '#64748b'})); // Antes: #FFFFFF
     if(tdGlobalData.euro[nKey])    
         tdGlobalData.euro[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Euro', hex: '#14b8a6'}));
 
     return tdsDia;
 };
-
 window.generarTDsEsquinaFront = function(nombreChofer, dniChofer, fechaIso) {
     let tdsDia = obtenerTDsPorDia(nombreChofer, dniChofer, fechaIso);
     if (tdsDia.length === 0) return '';
 
-    let html = `<div class="absolute bottom-1 left-1 flex flex-wrap gap-1 z-10 w-[80%]" id="dots-td-${fechaIso}">`; 
+    let html = `<div class="absolute bottom-1 left-1 flex flex-wrap gap-0.5 z-10 w-[90%]" id="dots-td-${fechaIso}">`; 
 
     tdsDia.forEach(td => {
         let objActual = tdGlobalData.estados[td.td];
-        let checked = false;
-        let titleExtra = ""; // Feedback UX para saber quién lo tocó
+        let checked = (objActual && typeof objActual === 'object') ? objActual.estado : (objActual === true);
         
-        if (objActual !== undefined) {
-            if (typeof objActual === 'object') {
-                checked = objActual.estado === true;
-                titleExtra = objActual.usuario ? ` [Por: ${objActual.usuario}]` : "";
-            } else {
-                checked = objActual === true; // Soporte datos viejos
-            }
-        }
-
+        // Aplicamos el principio de Prägnanz: Forma simple (círculo) con stroke para definir límites
         if (checked) {
-            html += `<span class="w-1.5 h-1.5 rounded-full shadow-sm" style="background-color: ${td.hex};" title="TD: ${td.td} (${td.origen}) - Entregado${titleExtra}"></span>`;
+            html += `<span class="td-dot" style="background-color: ${td.hex}; border-color: rgba(0,0,0,0.2);" title="Entregado"></span>`;
         } else {
-            html += `<span class="w-1.5 h-1.5 rounded-full shadow-sm" style="border: 1px solid ${td.hex}; background-color: transparent;" title="TD: ${td.td} (${td.origen}) - Pendiente${titleExtra}"></span>`;
+            // Pendiente: Solo el borde del color correspondiente para reducir ruido visual
+            html += `<span class="td-dot" style="background-color: transparent; border: 1.5px solid ${td.hex};" title="Pendiente"></span>`;
         }
     });
 
@@ -2309,17 +2327,22 @@ window.manejarSeleccionCalendario = function(isoStr, event, safeId) {
     };
 
     window.pintarCeldas = function(startIso, endIso) {
-        let dStart = new Date(startIso + "T12:00:00"); 
-        let dEnd = new Date(endIso + "T12:00:00");
-        document.querySelectorAll('.celda-calendario').forEach(el => { 
-            let cellDate = new Date(el.dataset.fecha + "T12:00:00"); 
-            el.classList.remove('ring-4', 'ring-indigo-400', 'ring-offset-1', 'scale-105', 'z-10'); 
-            if (cellDate >= dStart && cellDate <= dEnd) {
-                el.classList.add('ring-4', 'ring-indigo-400', 'ring-offset-1', 'scale-105', 'z-10'); 
-            }
-        });
-    };
-
+    let dStart = new Date(startIso + "T12:00:00"); 
+    let dEnd = new Date(endIso + "T12:00:00");
+    
+    document.querySelectorAll('.celda-calendario').forEach(el => { 
+        let cellDate = new Date(el.dataset.fecha + "T12:00:00"); 
+        
+        // Removemos clases previas
+        el.classList.remove('seleccionada', 'brightness-110'); 
+        
+        if (cellDate >= dStart && cellDate <= dEnd) {
+            el.classList.add('seleccionada');
+            // Subimos ligeramente el brillo para indicar que está dentro del rango activo
+            el.classList.add('brightness-110');
+        }
+    });
+};
 // --> MODIFICACIÓN: Renderizado HTML de los TDs (Agrupación / Región Común)
 window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
     const panel = document.getElementById('panel-acciones-rango');
