@@ -312,6 +312,7 @@ window.sincronizarBackend = function() {
     let viajesGlobales = {};
     let fotosGlobales = {};
     let vistaActual = 'diaria';
+    let metricaActivaState = null;
     let zoomTablaNivel = 1; 
     let seleccionInicioIso = null;
     
@@ -2064,13 +2065,19 @@ if (apto) {
                 </div>
             </div>`;
         }
+// [UX] Leer la memoria de estado antes de pintar el DOM
+        window.uiStateIndividual = window.uiStateIndividual || { historial: false, docs: false, aptos: false };
+        const stApto = window.uiStateIndividual.aptos;
+        const stHist = window.uiStateIndividual.historial;
+        const stDocs = window.uiStateIndividual.docs;
+
         let htmlAptosMedicos = `
             <div class="col-span-12 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-4">
                 <button onclick="toggleAptosMedicos()" class="w-full p-5 flex justify-between items-center bg-gray-50 hover:bg-gray-100 transition-colors focus:outline-none cursor-pointer">
                     <div class="flex items-center gap-3"><h3 class="text-xs font-black text-gray-600 uppercase tracking-widest">🩺 Obs. Aptos Médicos (SRC)</h3>${badgeApto}</div>
-                    <svg id="icon-chevron-aptos" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    <svg id="icon-chevron-aptos" style="${stApto ? 'transform: rotate(180deg);' : ''}" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
-                <div id="contenedor-aptos-wrapper" class="hidden border-t border-gray-200 bg-white"><div class="p-5 max-h-[400px] overflow-y-auto custom-scrollbar">${aptoContenido}</div></div>
+                <div id="contenedor-aptos-wrapper" class="${stApto ? '' : 'hidden '}border-t border-gray-200 bg-white"><div class="p-5 max-h-[400px] overflow-y-auto custom-scrollbar">${aptoContenido}</div></div>
             </div>`;
 
         let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
@@ -2089,17 +2096,17 @@ if (apto) {
             <div class="col-span-12 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <button onclick="toggleHistorialObservaciones()" class="w-full p-5 flex justify-between items-center bg-gray-50 hover:bg-gray-100 transition-colors focus:outline-none cursor-pointer">
                     <div class="flex items-center gap-3"><h3 class="text-xs font-black text-gray-600 uppercase tracking-widest">📋 Historial de Observaciones</h3><span id="badge-contador-obs" class="hidden px-2.5 py-0.5 rounded-md bg-white border border-gray-200 text-gray-600 shadow-sm text-[10px] font-black"></span></div>
-                    <svg id="icon-chevron-obs" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    <svg id="icon-chevron-obs" style="${stHist ? 'transform: rotate(180deg);' : ''}" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
-                <div id="contenedor-observaciones-wrapper" class="hidden border-t border-gray-200 bg-white"><div id="contenedor-observaciones" class="p-5 max-h-[500px] overflow-y-auto custom-scrollbar"></div></div>
+                <div id="contenedor-observaciones-wrapper" class="${stHist ? '' : 'hidden '}border-t border-gray-200 bg-white"><div id="contenedor-observaciones" class="p-5 max-h-[500px] overflow-y-auto custom-scrollbar"></div></div>
             </div>
 
             <div class="col-span-12 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-4">
                 <button onclick="toggleDocumentacion()" class="w-full p-5 flex justify-between items-center bg-gray-50 hover:bg-gray-100 transition-colors focus:outline-none cursor-pointer">
                     <div class="flex items-center gap-3"><h3 class="text-xs font-black text-gray-600 uppercase tracking-widest">📄 Documentación y Vencimientos</h3>${badgeDocsGeneral}</div>
-                    <svg id="icon-chevron-docs" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    <svg id="icon-chevron-docs" style="${stDocs ? 'transform: rotate(180deg);' : ''}" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
-                <div id="contenedor-docs-wrapper" class="hidden border-t border-gray-200 bg-white">
+                <div id="contenedor-docs-wrapper" class="${stDocs ? '' : 'hidden '}border-t border-gray-200 bg-white">
                     <div class="p-5">
                         <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -2114,7 +2121,7 @@ if (apto) {
             </div>
             ${htmlAptosMedicos}
         `;
-    }
+            }
 
 window.tdGlobalData = { campo: {}, infinia: {}, liviano: {}, euro: {}, estados: {}, extra: {} };
 
@@ -2704,9 +2711,44 @@ window.renderizarHistorialEventos = function(nombreChofer, startIso = null, endI
         contenedor.innerHTML = html + '</div>';
     }
 
-    window.toggleHistorialObservaciones = function() { const wrap = document.getElementById('contenedor-observaciones-wrapper'); const icon = document.getElementById('icon-chevron-obs'); if (wrap.classList.contains('hidden')) { wrap.classList.remove('hidden'); wrap.classList.add('expand-anim'); icon.style.transform = 'rotate(180deg)'; } else { wrap.classList.add('hidden'); wrap.classList.remove('expand-anim'); icon.style.transform = 'rotate(0deg)'; } };
-    window.toggleDocumentacion = function() { const wrap = document.getElementById('contenedor-docs-wrapper'); const icon = document.getElementById('icon-chevron-docs'); if (wrap.classList.contains('hidden')) { wrap.classList.remove('hidden'); wrap.classList.add('expand-anim'); icon.style.transform = 'rotate(180deg)'; } else { wrap.classList.add('hidden'); wrap.classList.remove('expand-anim'); icon.style.transform = 'rotate(0deg)'; } };
-    window.toggleAptosMedicos = function() { const wrap = document.getElementById('contenedor-aptos-wrapper'); const icon = document.getElementById('icon-chevron-aptos'); if (wrap.classList.contains('hidden')) { wrap.classList.remove('hidden'); wrap.classList.add('expand-anim'); icon.style.transform = 'rotate(180deg)'; } else { wrap.classList.add('hidden'); wrap.classList.remove('expand-anim'); icon.style.transform = 'rotate(0deg)'; } };
+// [UX] Memoria de estado global para los acordeones de la vista individual
+    window.uiStateIndividual = window.uiStateIndividual || { historial: false, docs: false, aptos: false };
+
+    window.toggleHistorialObservaciones = function() { 
+        const wrap = document.getElementById('contenedor-observaciones-wrapper'); 
+        const icon = document.getElementById('icon-chevron-obs'); 
+        if (wrap.classList.contains('hidden')) { 
+            wrap.classList.remove('hidden'); wrap.classList.add('expand-anim'); icon.style.transform = 'rotate(180deg)'; 
+            window.uiStateIndividual.historial = true;
+        } else { 
+            wrap.classList.add('hidden'); wrap.classList.remove('expand-anim'); icon.style.transform = 'rotate(0deg)'; 
+            window.uiStateIndividual.historial = false;
+        } 
+    };
+
+    window.toggleDocumentacion = function() { 
+        const wrap = document.getElementById('contenedor-docs-wrapper'); 
+        const icon = document.getElementById('icon-chevron-docs'); 
+        if (wrap.classList.contains('hidden')) { 
+            wrap.classList.remove('hidden'); wrap.classList.add('expand-anim'); icon.style.transform = 'rotate(180deg)'; 
+            window.uiStateIndividual.docs = true;
+        } else { 
+            wrap.classList.add('hidden'); wrap.classList.remove('expand-anim'); icon.style.transform = 'rotate(0deg)'; 
+            window.uiStateIndividual.docs = false;
+        } 
+    };
+
+    window.toggleAptosMedicos = function() { 
+        const wrap = document.getElementById('contenedor-aptos-wrapper'); 
+        const icon = document.getElementById('icon-chevron-aptos'); 
+        if (wrap.classList.contains('hidden')) { 
+            wrap.classList.remove('hidden'); wrap.classList.add('expand-anim'); icon.style.transform = 'rotate(180deg)'; 
+            window.uiStateIndividual.aptos = true;
+        } else { 
+            wrap.classList.add('hidden'); wrap.classList.remove('expand-anim'); icon.style.transform = 'rotate(0deg)'; 
+            window.uiStateIndividual.aptos = false;
+        } 
+    };
 
 function obtenerEstadisticasConDetalle() {
         const fBase = new Date(fechaGlobalContexto + "T12:00:00");
@@ -2768,11 +2810,15 @@ function obtenerEstadisticasConDetalle() {
         return stats;
     }
 
-    window.mostrarDetalleMetrica = function(id, label, event, filterSrv = null) {
-        let rawData = window.datosMetricasGlobales[id] || [];
-        let data = filterSrv ? rawData.filter(item => item.srv === filterSrv) : rawData;
+window.mostrarDetalleMetrica = function(id, label, event, filterSrv = null, isAutoRefresh = false) {
+    let rawData = window.datosMetricasGlobales[id] || [];
+    let data = filterSrv ? rawData.filter(item => item.srv === filterSrv) : rawData;
 
-        const panel = document.getElementById('panel-detalle-metrica');
+    const panel = document.getElementById('panel-detalle-metrica');
+    
+    // [UX] Guardar el estado si es una interacción humana
+    if (!isAutoRefresh) {
+        window.metricaActivaState = { id, label, filterSrv };
         
         document.querySelectorAll('.metrica-cell').forEach(cell => { 
             cell.classList.remove('ring-inset', 'ring-4'); 
@@ -2780,57 +2826,75 @@ function obtenerEstadisticasConDetalle() {
         
         if (event && event.currentTarget) {
             event.currentTarget.classList.add('ring-inset', 'ring-4');
+            // Guardamos el índice exacto de la celda para re-aplicar el borde tras el auto-refresh
+            window.metricaActivaState.cellIndex = Array.from(document.querySelectorAll('.metrica-cell')).indexOf(event.currentTarget);
         }
+    }
 
-        let filterNotice = filterSrv ? `<span class="bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded text-xs font-bold">Filtro: ${filterSrv}</span>` : '';
+    let filterNotice = filterSrv ? `<span class="bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded text-xs font-bold">Filtro: ${filterSrv}</span>` : '';
 
-        let html = `
-            <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <h4 class="font-black text-indigo-900 text-sm md:text-base uppercase tracking-wider flex items-center gap-2">
-                        Detalle: ${label} 
-                    </h4>
-                    ${filterNotice}
-                    <span class="bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-md text-xs font-bold">${data.length} Registros</span>
-                </div>
-                <button onclick="document.getElementById('panel-detalle-metrica').classList.add('hidden'); document.querySelectorAll('.metrica-cell').forEach(c=>c.classList.remove('ring-inset', 'ring-4'))" class="text-gray-400 hover:text-red-500 bg-gray-100 p-1.5 rounded-lg transition-colors">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>`;
+    // [UX] El botón de cierre ahora limpia la memoria (metricaActivaState = null)
+    let html = `
+        <div class="flex justify-between items-center mb-4 border-b border-gray-200 pb-3">
+            <div class="flex items-center gap-2 flex-wrap">
+                <h4 class="font-black text-indigo-900 text-sm md:text-base uppercase tracking-wider flex items-center gap-2">
+                    Detalle: ${label} 
+                </h4>
+                ${filterNotice}
+                <span class="bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded-md text-xs font-bold">${data.length} Registros</span>
+            </div>
+            <button onclick="document.getElementById('panel-detalle-metrica').classList.add('hidden'); document.querySelectorAll('.metrica-cell').forEach(c=>c.classList.remove('ring-inset', 'ring-4')); window.metricaActivaState = null;" class="text-gray-400 hover:text-red-500 bg-gray-100 p-1.5 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>`;
+    
+    if(data.length === 0) {
+        html += `<div class="text-center py-6 text-gray-500 font-bold text-xs uppercase tracking-widest bg-white rounded-lg border border-dashed border-gray-300">Sin conductores en este estado.</div>`;
+    } else {
+        html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">`;
         
-        if(data.length === 0) {
-            html += `<div class="text-center py-6 text-gray-500 font-bold text-xs uppercase tracking-widest bg-white rounded-lg border border-dashed border-gray-300">Sin conductores en este estado.</div>`;
-        } else {
-            html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">`;
-            
-            data.sort((a,b) => a.nom.localeCompare(b.nom)).forEach(item => {
-               let th = getSrvTheme(item.srv);
-                html += `
-                <div onclick="irAVistaIndividual('${item._safeId}')" class="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-blue-400 hover:shadow-md hover:bg-blue-50/30 transition-all cursor-pointer group" title="Ir a ficha individual de ${item.nom}">
-                    <div class="flex items-center gap-2 shrink-0">
-                        <span class="${th.softBg} ${th.softText} border ${th.border} px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider hidden sm:inline-block">${item.srv}</span>
-                        <span class="text-[10px] sm:text-xs font-black px-2.5 py-1 bg-gray-100 text-gray-700 border border-gray-200 rounded-md whitespace-nowrap group-hover:bg-blue-100 group-hover:text-blue-800 group-hover:border-blue-300 transition-colors">
-                            ${item.val}
-                        </span>
-                    </div>
-                    <span class="font-bold text-gray-800 text-xs sm:text-sm text-right truncate pl-3 w-full group-hover:text-blue-700 transition-colors flex justify-end items-center gap-2">
+        data.sort((a,b) => a.nom.localeCompare(b.nom)).forEach(item => {
+           let th = getSrvTheme(item.srv);
+            html += `
+            <div onclick="irAVistaIndividual('${item._safeId}')" class="flex flex-col p-3 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-blue-400 hover:shadow-md hover:bg-blue-50/30 transition-all cursor-pointer group" title="Ir a ficha individual de ${item.nom}">
+                <div class="flex justify-between items-center w-full mb-2">
+                    <span class="font-bold text-gray-800 text-xs sm:text-sm truncate pr-2 group-hover:text-blue-700 transition-colors">
                         ${item.nom}
-                        <svg class="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                     </span>
-                </div>`;
-            });
-            html += `</div>`;
-        }
-        
-        panel.innerHTML = html;
-        panel.classList.remove('hidden');
+                    <svg class="w-3.5 h-3.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="${th.softBg} ${th.softText} border ${th.border} px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0">
+                        ${item.srv}
+                    </span>
+                    <span class="text-[10px] font-black px-2 py-0.5 bg-gray-100 text-gray-700 border border-gray-200 rounded-md truncate group-hover:bg-blue-100 group-hover:text-blue-800 group-hover:border-blue-300 transition-colors">
+                        ${item.val}
+                    </span>
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+    
+    panel.innerHTML = html;
+    panel.classList.remove('hidden');
+    
+    // [UX] Aplicar animaciones y auto-scroll SOLO si fue un clic humano
+    if (!isAutoRefresh) {
         panel.classList.add('expand-anim');
-        
         setTimeout(() => {
             panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }, 100);
+    } else {
+        // Si fue el Auto-Refresh, re-pintamos el anillo (halo) en la celda activa para no perder el rastro visual
+        if (window.metricaActivaState && window.metricaActivaState.cellIndex !== undefined) {
+            const cells = document.querySelectorAll('.metrica-cell');
+            if (cells[window.metricaActivaState.cellIndex]) {
+                cells[window.metricaActivaState.cellIndex].classList.add('ring-inset', 'ring-4');
+            }
+        }
     }
-    
+}    
 function renderizarVistaMetricas(container) {
     const stats = obtenerEstadisticasConDetalle();
     
@@ -3032,8 +3096,22 @@ function renderizarVistaMetricas(container) {
         </div>
     </div>
     `;
+    
+    // Inyectamos todo el HTML de la matriz en el contenedor
     container.innerHTML = html;
-}
+
+    // [UX] Gestalt de Continuidad: Restaurar el panel si estaba abierto antes del polling
+    if (window.metricaActivaState) {
+        window.mostrarDetalleMetrica(
+            window.metricaActivaState.id, 
+            window.metricaActivaState.label, 
+            null, // No hay evento de clic real
+            window.metricaActivaState.filterSrv, 
+            true  // isAutoRefresh = true (evita que la pantalla salte con un scroll repentino)
+        );
+    }
+        }
+
     // 1. Aplica el cambio de fecha desde el footer
     window.aplicarFiltroFechaLocal = function(fechaStr) {
         if (!fechaStr) return;
