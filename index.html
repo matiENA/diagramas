@@ -1642,7 +1642,12 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
         // DNI (Prioriza el nuevo JSON, con fallback a la estructura anterior)
         let datosDni = dnisGlobales[n];
         let dniDelChofer = datosChoferObj.dni || (datosDni ? (datosDni.dni || datosDni) : 'Sin DNI');
-        let vacacionesAPI = datosDni && datosDni.vac !== undefined ? datosDni.vac : 0;
+        
+        // 👉 SOLUCIÓN: Cruce doble. Si falla por nombre, busca por DNI exacto
+        let nodoDni = datosDni || dnisGlobales[dniDelChofer] || {};
+        
+        // Captura el valor de la Columna G (vac) asegurándose de que sea numérico
+        let vacacionesAPI = nodoDni.vac !== undefined ? parseFloat(nodoDni.vac) : 0;
 
         // NUEVOS DATOS: Legajo, Email y Fecha de Alta
         let legajoChofer = chofer.id || datosChoferObj.legajo || '-';
