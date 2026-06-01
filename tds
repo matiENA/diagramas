@@ -180,7 +180,7 @@ function actualizarCacheTDsInfiniaD() {
 
 function actualizarCacheTDsLivianoYEuro() {
   const ssPrincipal = SpreadsheetApp.getActiveSpreadsheet();
-  const ID_SHEET_LIVEURO = '1qKY_MvVMLQYs4kNsL8TlkNkC7qsuNJK7T_7CTbnaKR4';
+  const ID_SHEET_LIVEURO = '1AUw6FY5xOV9WXGyf1i-sgAPK52cWwJQx1S2yJYsfAxI';
   
   // Nombre de la pestaña (Si en el futuro le agregan el mes como a las otras, 
   // puedes cambiarlo a: const nombreMesActual + " Liviano & EURO")
@@ -314,50 +314,78 @@ function obtenerDatosTDParaFront() {
   };
 }
 
-function guardarEstadoCheckboxTD(tdId, estado, codigosExtra) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const hoja = ss.getSheetByName('td');
-    if (!hoja) throw new Error("No se encontró la pestaña 'td'");
+function guardarEstadoCheckboxTD(tdId, estado, codigosExtra, usuarioResponsable) {
+      try {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const hoja = ss.getSheetByName('td');
+        if (!hoja) throw new Error("No se encontró la pestaña 'td'");
 
-    // 1. Manejar Estados (Fila 5)
-    let estados = JSON.parse(hoja.getRange("A5").getValue() || "{}");
-    estados[tdId] = estado;
-    hoja.getRange("A5").setValue(JSON.stringify(estados));
+        // 1. Manejar Estados (Fila A5) - Ahora guarda el usuario y la fecha
+        let estados = JSON.parse(hoja.getRange("A5").getValue() || "{}");
+        estados[tdId] = {
+          estado: estado,
+          usuario: usuarioResponsable || "Desconocido",
+          fecha: new Date().toISOString()
+        };
+        hoja.getRange("A5").setValue(JSON.stringify(estados));
 
-    // 2. Manejar Códigos (Fila 6)
-    let todosLosCodigos = JSON.parse(hoja.getRange("A6").getValue() || "{}");
-    
-    if (estado === true && codigosExtra && codigosExtra.length > 0) {
-      todosLosCodigos[tdId] = codigosExtra;
-    } else {
-      // Si se apaga el checkbox, limpiamos los códigos para no ocupar espacio innecesario
-      delete todosLosCodigos[tdId];
-    }
-    hoja.getRange("A6").setValue(JSON.stringify(todosLosCodigos));
+        // 2. Manejar Códigos (Fila A6)
+        let todosLosCodigos = JSON.parse(hoja.getRange("A6").getValue() || "{}");
+        
+        if (estado === true && codigosExtra && codigosExtra.length > 0) {
+          todosLosCodigos[tdId] = codigosExtra;
+        } else {
+          delete todosLosCodigos[tdId];
+        }
+        hoja.getRange("A6").setValue(JSON.stringify(todosLosCodigos));
 
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
+        // Registro en DB_Logs
+        registrarLog(usuarioResponsable, "MODIFICO_ESTADO_TD", {
+          tdId: tdId,
+          checkbox_estado: estado ? "MARCADO" : "DESMARCADO",
+          codigos_extra: codigosExtra || []
+        });
+
+        return { success: true };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
 }
 
-function guardarDatosExtraBackend(tdId, valores) {
+
+function guardarDatosExtraBackend(tdId, valores, usuarioResponsable) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const hoja = ss.getSheetByName('td');
     if (!hoja) throw new Error("No se encontró la pestaña 'td'");
 
-    // Leer Códigos actuales de la fila 6
+    // 1. Leer estado ACTUAL del checkbox desde A5 (Soporta formato viejo y nuevo)
+    let estados = JSON.parse(hoja.getRange("A5").getValue() || "{}");
+    let estadoActualCheckbox = "DESMARCADO";
+    if (estados[tdId]) {
+      if (typeof estados[tdId] === 'object') {
+        estadoActualCheckbox = estados[tdId].estado ? "MARCADO" : "DESMARCADO";
+      } else {
+        estadoActualCheckbox = estados[tdId] ? "MARCADO" : "DESMARCADO"; // Legacy (Boolean puro)
+      }
+    }
+
+    // 2. Manejar Códigos (Fila A6)
     let todosLosCodigos = JSON.parse(hoja.getRange("A6").getValue() || "{}");
-    
     if (valores && valores.length > 0) {
       todosLosCodigos[tdId] = valores;
     } else {
       delete todosLosCodigos[tdId];
     }
-    
     hoja.getRange("A6").setValue(JSON.stringify(todosLosCodigos));
+
+    // Registro en DB_Logs
+    registrarLog(usuarioResponsable, "MODIFICO_EXTRA_TD", {
+      tdId: tdId,
+      checkbox_estado: estadoActualCheckbox,
+      codigos_extra: valores || []
+    });
+
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
