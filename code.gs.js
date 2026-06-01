@@ -4,8 +4,8 @@
  * ============================================================================
  */
 
-const ID_SHEET_MOVIMIENTOS = '1QcLrWKxVkLmnJvit-9iTRJQ9Tg5pVyScO_XrRf4Ola4'; 
-const NOMBRE_PESTANA_MOVIMIENTOS = 'MAYO 2026- Mov.Unidades y Choferes'; 
+const ID_SHEET_MOVIMIENTOS = '1hhJKwp9xOOHL_zZSJMbrJh5fwfsIPre155UTWhKWI44'; 
+const NOMBRE_PESTANA_MOVIMIENTOS = 'JUNIO 2026- Mov.Unidades y Choferes'; 
 const ID_SPREADSHEET_DIAGRAMAS = '1mhfXpFCF6upMlnRnZjDdBVS_wqTx5q8v0qQArNCnNAU'; 
 const ID_SHEET_OBSERVACIONES = '1VwCNK89ecaac7IDlMWWCLHRqZoch9HB6vop5AfQEaA0';
 const ID_SHEET_KILOMETROS = '1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM';
@@ -56,12 +56,13 @@ function doPost(e) {
     } else if (payload.action === 'marcarEntregado') {
       respuesta = guardarEstadoEntrega(payload.dni, payload.mes, payload.tdId, payload.estado);
       
+  // Reemplaza estas líneas dentro de doPost(e):
     } else if (payload.action === 'toggleEstadoTD') { 
-      respuesta = guardarEstadoCheckboxTD(payload.tdId, payload.estado, payload.codigosExtra);
+      respuesta = guardarEstadoCheckboxTD(payload.tdId, payload.estado, payload.codigosExtra, payload.usuario); // 👉 NUEVO
       
     } else if (payload.action === 'actualizarExtraTD') { 
-      respuesta = guardarDatosExtraBackend(payload.tdId, payload.valores);
-      
+      respuesta = guardarDatosExtraBackend(payload.tdId, payload.valores, payload.usuario); // 👉 NUEVO
+
     // 👉 NUEVO: Endpoint para la Sincronización Total (Botón del Front-End)
     } else if (payload.action === 'sincronizarTotal') {
       respuesta = ejecutarSincronizacionTotal();
@@ -296,10 +297,15 @@ function procesarVentanaDiagramas(offsetsMeses, hacerMerge = false) {
   // 👉 1. Helper para Normalizar Nombres estricto (Evita bugs por espacios/tildes)
   const normalizarNombre = (n) => String(n).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
-  // 👉 2. Leer JSON de DNIs desde la celda A4 (API_CACHE_BASICO)
+// 👉 2. Leer JSON de DNIs desde la FILA 4 (API_CACHE_BASICO) soportando chunks infinitos
   let mapaDni = {};
   try {
-    let jsonDniRaw = String(hojaCache.getRange("A4").getValue() || "").replace(/^'/, "");
+    // Leemos toda la fila 4 de una vez
+    let dataFila4 = hojaCache.getRange("4:4").getValues()[0];
+    
+    // Filtramos las celdas vacías, quitamos la comilla inicial y unimos todos los pedazos
+    let jsonDniRaw = dataFila4.filter(String).map(c => String(c || "").replace(/^'/, "")).join("");
+    
     if (jsonDniRaw) {
       let dataDniObj = JSON.parse(jsonDniRaw);
       // Normalizamos las claves del diccionario DNI para que crucen perfecto
@@ -308,9 +314,8 @@ function procesarVentanaDiagramas(offsetsMeses, hacerMerge = false) {
       }
     }
   } catch (e) {
-    console.warn("No se pudo leer/parsear el mapa de DNIs en A4:", e);
+    console.warn("No se pudo leer/parsear el mapa de DNIs en Fila 4:", e);
   }
-
   const ssDiag = SpreadsheetApp.openById(ID_SPREADSHEET_DIAGRAMAS);
   const mesesAbrev = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
   const nombreHojaActual = mesesAbrev[hoy.getMonth()] + "-" + String(hoy.getFullYear()).slice(-2);
@@ -578,18 +583,43 @@ function actualizarCacheG3_Estaticos() {
       }
     }
 
-    // Vacaciones
+  // --- 2. LECTURA DE VACACIONES (CON FILTRO DE POLÍTICA) ---
     const sheetVac = ssCentral.getSheetByName('vacaciones');
     if (sheetVac) {
       const dataVac = sheetVac.getDataRange().getValues();
       for (let i = 1; i < dataVac.length; i++) {
-        let dniVac = _parseDni(dataVac[i][1]); // Extrae CUIL y limpia a DNI
-        if (dniVac && mapaDnis[dniVac]) {
-          mapaDnis[dniVac].vac = parseFloat(dataVac[i][6]) || 0;
+        
+        // 💡 EL SALVAVIDAS: Solo procesamos la fila si es de Vacaciones
+        let tipoLicencia = String(dataVac[i][2] || "").toLowerCase();
+        if (!tipoLicencia.includes("vacaciones")) continue; 
+        
+        let nomVac = String(dataVac[i][0] || "").trim().toLowerCase(); 
+        let cuilRaw = dataVac[i][1]; 
+        
+        let dniDesdeCuil = _parseDni(cuilRaw); 
+        
+        if (dniDesdeCuil) {
+          if (!mapaDnis[dniDesdeCuil]) {
+            mapaDnis[dniDesdeCuil] = { dni: dniDesdeCuil, vac: 0 };
+          }
+          
+          let disponible = parseFloat(dataVac[i][4]); 
+          let saldo = parseFloat(dataVac[i][6]);
+          let diasAsignar = !isNaN(saldo) ? saldo : (!isNaN(disponible) ? disponible : 0);
+          
+          // Usamos += por si el empleado tiene vacaciones de años distintos en filas separadas
+          mapaDnis[dniDesdeCuil].vac = (mapaDnis[dniDesdeCuil].vac || 0) + diasAsignar;
+          
+          if (nomVac) {
+             if (!mapaDnis[nomVac]) {
+                 mapaDnis[nomVac] = { dni: dniDesdeCuil, vac: mapaDnis[dniDesdeCuil].vac };
+             } else {
+                 mapaDnis[nomVac].vac = mapaDnis[dniDesdeCuil].vac;
+             }
+          }
         }
       }
-    }
-  } catch(e) { 
+    }      } catch(e) { 
     console.error("Error G3 (DNI/Vacaciones):", e); 
   }
 
@@ -948,36 +978,43 @@ function obtenerDatosTDParaFront() {
   };
 }
 
-function guardarEstadoCheckboxTD(tdId, estado) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let hojaTD = ss.getSheetByName('td');
-  if (!hojaTD) hojaTD = ss.insertSheet('td');
+function guardarEstadoCheckboxTD(tdId, estado, codigosExtra, usuarioResponsable) {
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const hoja = ss.getSheetByName('td');
+      if (!hoja) throw new Error("No se encontró la pestaña 'td'");
 
-  // Leer estado actual de la Fila 12
-  let dataCache = hojaTD.getRange("12:12").getValues()[0];
-  let jsonStr = dataCache.filter(String).map(c => String(c).replace(/^'/, "")).join("");
-  let estadosObj = {};
-  if (jsonStr) try { estadosObj = JSON.parse(jsonStr); } catch(e) {}
+      // 1. Manejar Estados (Fila A5)
+      let estados = JSON.parse(hoja.getRange("A5").getValue() || "{}");
+      estados[tdId] = estado;
+      hoja.getRange("A5").setValue(JSON.stringify(estados));
 
-  // Actualizar el estado del TD específico
-  estadosObj[tdId] = estado;
+      // 2. Manejar Códigos (Fila A6)
+      let todosLosCodigos = JSON.parse(hoja.getRange("A6").getValue() || "{}");
+      
+      if (estado === true && codigosExtra && codigosExtra.length > 0) {
+        todosLosCodigos[tdId] = codigosExtra;
+      } else {
+        // Si se apaga el checkbox, limpiamos los códigos para no ocupar espacio
+        delete todosLosCodigos[tdId];
+      }
+      hoja.getRange("A6").setValue(JSON.stringify(todosLosCodigos));
 
-  // Guardar aplicando Chunking Horizontal (45k Limit)
-  let newJsonStr = JSON.stringify(estadosObj);
-  let chunks = [];
-  const chunkSize = 45000;
-  for (let i = 0; i < newJsonStr.length; i += chunkSize) {
-    chunks.push("'" + newJsonStr.substring(i, i + chunkSize));
+      // 👉 NUEVO LOG: Registra explícitamente el estado del checkbox y los códigos
+      registrarLog(usuarioResponsable, "MODIFICO_ESTADO_TD", {
+        tdId: tdId,
+        checkbox_estado: estado ? "MARCADO" : "DESMARCADO",
+        codigos_extra: codigosExtra || []
+      });
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   }
 
-  hojaTD.getRange("12:12").clearContent();
-  if (chunks.length > 0) {
-    hojaTD.getRange(12, 1, 1, chunks.length).setValues([chunks]);
-  }
-
-  return { success: true };
-}
 // 1. EL INSTALADOR (Ejecutar manualmente SOLO UNA VEZ)
+
 function instalarTriggerDiagramas() {
   const ID_DIAGRAMAS = ID_SPREADSHEET_DIAGRAMAS; // Usa tu variable global existente
   
@@ -1163,3 +1200,4 @@ function registrarLog(usuarioResponsable, accion, detalles) {
   logArray.push(nuevoEvento);
   cell.setValue(JSON.stringify(logArray));
 }
+
