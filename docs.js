@@ -323,6 +323,7 @@ function guardarDocumentos(nombre, exVen, licVen, certVen) {
     return { success: true };
   } catch (e) { return { success: false, error: e.toString() }; }
 }
+
 function actualizarCacheG4_Fotos() {
   const ssMaestro = SpreadsheetApp.getActiveSpreadsheet();
   const hojaFotos = ssMaestro.getSheetByName('fotos'); 
@@ -356,7 +357,6 @@ function actualizarCacheG4_Fotos() {
   escribirChunksEnFila(hojaCache, 10, JSON.stringify(mapaFotos));
   ssMaestro.toast("Caché de Fotos actualizado correctamente.", "G4 OK");
 }
-
 function updatedocs() {
     actualizarCacheG2_Vencimientos();
     actualizarCacheG3_Estaticos();
