@@ -623,37 +623,54 @@ function actualizarCacheG3_Estaticos() {
     console.error("Error G3 (DNI/Vacaciones):", e); 
   }
 
-  // --- 3. FUENTE LEGAJOS: Datos de Perfil Expandido ---
+// --- 3. FUENTE LEGAJOS: Datos de Perfil Expandido ---
   try {
     const ssLegajos = SpreadsheetApp.openById(ID_LEGAJOS);
     const sheetLegajos = ssLegajos.getSheetByName('INFORMACION CONDUCTORES');
     if (sheetLegajos) {
       const dataLeg = sheetLegajos.getDataRange().getValues();
       
-      // Ajuste de fila inicial: revisa si tus datos empiezan en fila 4 como en el CSV (donde la cabecera real está ahí) 
-      // Si el script funcionaba empezando desde i=1, mantenlo así.
-      for (let i = 1; i < dataLeg.length; i++) {
-        
-        // [ACTUALIZADO] Todos los índices restados en 1 por el corrimiento de columnas
+      // 👉 SOLUCIÓN: Buscar dinámicamente dónde empiezan los datos reales
+      let startRow = 1;
+      for (let r = 0; r < dataLeg.length; r++) {
+         if (String(dataLeg[r][0]).trim() === "Nº" || String(dataLeg[r][1]).includes("Apellido")) {
+            startRow = r + 1; // La data empieza en la fila siguiente a las cabeceras
+            break;
+         }
+      }
+
+      for (let i = startRow; i < dataLeg.length; i++) {
         let legajo = String(dataLeg[i][0] || "").trim();               // Columna A
         let nombre = String(dataLeg[i][1] || "").trim().toLowerCase(); // Columna B
-        let dni = _parseDni(dataLeg[i][2]);                            // Columna C
-        let telefonoSec = String(dataLeg[i][3] || "").trim();          // Columna D
-        let email = String(dataLeg[i][4] || "").trim();                // Columna E
-        let fechaAltaRaw = dataLeg[i][10];                             // Columna K
+        let rawDni = String(dataLeg[i][2] || "");                      // Columna C
+        let dni = rawDni ? _parseDni(rawDni) : "";
         
-        let fechaAltaFormateada = fechaAltaRaw instanceof Date ? 
-                                  fechaAltaRaw.toLocaleDateString('es-AR') : String(fechaAltaRaw || "");
+        // Limpiamos teléfono base dejando SOLO NÚMEROS
+        let telefonoSec = String(dataLeg[i][3] || "").replace(/\D/g, ''); 
+        
+        let email = String(dataLeg[i][4] || "").trim();
+        let fechaAltaRaw = dataLeg[i][10];
+        
+        // Formateo de fecha seguro para el frontend
+        let fechaAltaFormateada = "";
+        if (fechaAltaRaw instanceof Date) {
+            fechaAltaFormateada = Utilities.formatDate(fechaAltaRaw, Session.getScriptTimeZone(), "dd/MM/yyyy");
+        } else {
+            fechaAltaFormateada = String(fechaAltaRaw || "").trim();
+        }
 
-        // Agregamos la condición para que guarde si hay Nombre + (DNI o Legajo)
         if (nombre && (dni || legajo)) {
-          mapaInfo[nombre] = {
-            legajo: legajo,   // <--- Dato incorporado para tu Frontend
+          let infoObj = {
+            legajo: legajo,
             dni: dni,
             telefono: telefonoSec,
             email: email,
             fechaAlta: fechaAltaFormateada
           };
+          
+          mapaInfo[nombre] = infoObj;
+          // 👉 CRUCE DOBLE: Guardamos también usando el DNI como llave
+          if (dni) mapaInfo[dni] = infoObj; 
         }
       }
     }
@@ -668,21 +685,22 @@ function actualizarCacheG3_Estaticos() {
       const dataTel = sheetTel.getDataRange().getValues();
       for (let i = 1; i < dataTel.length; i++) {
         let nombre = String(dataTel[i][0]).trim().toLowerCase();
-        let telPrincipal = String(dataTel[i][2]).trim(); 
+        let telRaw = String(dataTel[i][2] || "").trim(); 
         
-        if (nombre && nombre !== "chofer asignado" && telPrincipal) {
-          // Si el chofer no existía en Legajos, inicializa su nodo
+        // 👉 SOLUCIÓN: El Regex \D elimina cualquier letra o texto (ej: "ultimos")
+        let telNumerico = telRaw.replace(/\D/g, ''); 
+        
+        // Solo sobrescribe si el resultado numérico es un teléfono válido (al menos 8 dígitos)
+        if (nombre && nombre !== "chofer asignado" && telNumerico.length >= 8) {
           if (!mapaInfo[nombre]) mapaInfo[nombre] = {}; 
-          
-          // Sobrescribe/Asigna el teléfono principal
-          mapaInfo[nombre].telefono = telPrincipal; 
+          mapaInfo[nombre].telefono = telNumerico; 
         }
       }
     }
   } catch(e) { 
     console.error("Error G3 Teléfonos:", e); 
   }
-
+  
   // --- 5. ALMACENAMIENTO CACHÉ ---
   if (typeof escribirChunksEnFila === 'function') {
     escribirChunksEnFila(hojaCache, 4, JSON.stringify(mapaDnis));
