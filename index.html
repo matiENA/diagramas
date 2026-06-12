@@ -432,45 +432,55 @@ function desbloquearSistema() {
 }
 
 document.addEventListener('click', (e) => {
-        // 1. Cerrar dropdown de búsqueda individual
-        const containerSelect = document.getElementById('custom-select-container');
-        if (containerSelect && !containerSelect.contains(e.target)) {
-            const dropInd = document.getElementById('dropdown-individual');
-            if(dropInd) dropInd.classList.add('hidden');
-        }
+    // 1. Cerrar dropdown de búsqueda individual
+    const containerSelect = document.getElementById('custom-select-container');
+    if (containerSelect && !containerSelect.contains(e.target)) {
+        const dropInd = document.getElementById('dropdown-individual');
+        if(dropInd) dropInd.classList.add('hidden');
+    }
 
-        // 2. Deshacer selección del calendario al hacer clic fuera
-        const panelAcciones = document.getElementById('panel-acciones-rango');
-        
-        if (panelAcciones && !panelAcciones.classList.contains('hidden')) {
-            const clicEnPanel = panelAcciones.contains(e.target);
-            const clicEnCelda = e.target.closest('.celda-calendario');
-            const clicEnZoom = e.target.closest('button') && 
-                               e.target.closest('button').getAttribute('onclick') && 
-                               e.target.closest('button').getAttribute('onclick').includes('cambiarZoomIndividual');
+    // 2. Deshacer selección del calendario al hacer clic fuera
+    const panelAcciones = document.getElementById('panel-acciones-rango');
+    
+    if (panelAcciones && !panelAcciones.classList.contains('hidden')) {
+        const clicEnPanel = panelAcciones.contains(e.target);
+        const clicEnCelda = e.target.closest('.celda-calendario');
+        const clicEnZoom = e.target.closest('button') && 
+                           e.target.closest('button').getAttribute('onclick') && 
+                           e.target.closest('button').getAttribute('onclick').includes('cambiarZoomIndividual');
 
-            if (!clicEnPanel && !clicEnCelda && !clicEnZoom) {
-                seleccionInicioIso = null;
-                currentEndIso = null;
-                panelAcciones.classList.add('hidden');
-                document.querySelectorAll('.celda-calendario').forEach(el => {
-                    el.classList.remove('ring-4', 'ring-indigo-400', 'ring-offset-1', 'scale-105', 'z-10');
-                });
+        if (!clicEnPanel && !clicEnCelda && !clicEnZoom) {
+            // Limpiamos variables de estado
+            seleccionInicioIso = null;
+            currentEndIso = null;
+            
+            // Ocultamos el panel de acciones y el resumen de KM superior
+            panelAcciones.classList.add('hidden');
+            const headerKm = document.getElementById('header-km-rango');
+            if (headerKm) headerKm.classList.add('hidden');
 
-                if (conductorSeleccionadoId) {
-                    const choferActivo = datosGlobales.find(c => String(c.id) === String(conductorSeleccionadoId));
-                    if (choferActivo) {
-                        if (typeof renderizarHistorialEventos === 'function') {
-                            renderizarHistorialEventos(choferActivo.nom);
-                        }
-                        if (typeof renderizarAptosMedicos === 'function') {
-                            renderizarAptosMedicos(choferActivo.nom); 
-                        }
+            // CORRECCIÓN 1: Remover las clases actuales del calendario
+            document.querySelectorAll('.celda-calendario').forEach(el => {
+                el.classList.remove('seleccionada', 'brightness-110');
+            });
+
+            if (conductorSeleccionadoId) {
+                // CORRECCIÓN 2: Usar c._safeId en lugar de c.id
+                const choferActivo = datosGlobales.find(c => String(c._safeId) === String(conductorSeleccionadoId));
+                
+                if (choferActivo) {
+                    // Al enviarle solo el nombre sin fechas, la función restaura TODAS las observaciones
+                    if (typeof renderizarHistorialEventos === 'function') {
+                        renderizarHistorialEventos(choferActivo.nom);
+                    }
+                    if (typeof renderizarAptosMedicos === 'function') {
+                        renderizarAptosMedicos(choferActivo.nom); 
                     }
                 }
             }
         }
-    });
+    }
+});
 
     // --- [TAG: ROUTER PRINCIPAL] ---
     function cambiarVistaPrincipal(vista) {
