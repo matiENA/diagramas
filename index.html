@@ -2357,8 +2357,12 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
     if(!chofer) return;
 
     let nKey = chofer.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    
+    // 👉 CRUCE ANTIFALLOS (Igual al de la Ficha Individual)
     let datosDni = dnisGlobales[nKey];
-    let dniChofer = datosDni ? (datosDni.dni || datosDni) : "";
+    let dniDelChofer = datosDni ? (datosDni.dni || datosDni) : null;
+    let datosChoferObj = (dniDelChofer ? telefonosGlobales[dniDelChofer] : null) || telefonosGlobales[nKey] || {};
+    let dniChofer = datosChoferObj.dni || dniDelChofer || "";
 
     let dStart = new Date(startIso + "T12:00:00"); 
     let dEnd = new Date(endIso + "T12:00:00");
