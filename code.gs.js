@@ -630,36 +630,29 @@ function actualizarCacheG3_Estaticos() {
     if (sheetLegajos) {
       const dataLeg = sheetLegajos.getDataRange().getValues();
       
-      // 👉 SOLUCIÓN: Buscar dinámicamente dónde empiezan los datos reales
-      let startRow = 1;
-      for (let r = 0; r < dataLeg.length; r++) {
-         if (String(dataLeg[r][0]).trim() === "Nº" || String(dataLeg[r][1]).includes("Apellido")) {
-            startRow = r + 1; // La data empieza en la fila siguiente a las cabeceras
-            break;
-         }
-      }
+      for (let i = 1; i < dataLeg.length; i++) {
+        let legajo = String(dataLeg[i][0] || "").trim();               // Columna A (Nº)
+        
+        // 💡 LEY DE PRÄGNANZ (Filtro simple): Si la columna A no es un número, es una cabecera. La ignoramos.
+        if (!legajo || isNaN(parseInt(legajo, 10))) continue;
 
-      for (let i = startRow; i < dataLeg.length; i++) {
-        let legajo = String(dataLeg[i][0] || "").trim();               // Columna A
-        let nombre = String(dataLeg[i][1] || "").trim().toLowerCase(); // Columna B
+        let nombreRaw = String(dataLeg[i][1] || "").trim();            // Columna B
         let rawDni = String(dataLeg[i][2] || "");                      // Columna C
         let dni = rawDni ? _parseDni(rawDni) : "";
         
-        // Limpiamos teléfono base dejando SOLO NÚMEROS
+        // 💡 EXTRACCIÓN ESTRICTA: El Regex \D elimina palabras como "(INTERNO)" o "(ESPOSA)"
         let telefonoSec = String(dataLeg[i][3] || "").replace(/\D/g, ''); 
-        
         let email = String(dataLeg[i][4] || "").trim();
         let fechaAltaRaw = dataLeg[i][10];
         
-        // Formateo de fecha seguro para el frontend
-        let fechaAltaFormateada = "";
-        if (fechaAltaRaw instanceof Date) {
-            fechaAltaFormateada = Utilities.formatDate(fechaAltaRaw, Session.getScriptTimeZone(), "dd/MM/yyyy");
-        } else {
-            fechaAltaFormateada = String(fechaAltaRaw || "").trim();
-        }
+        let fechaAltaFormateada = fechaAltaRaw instanceof Date ? 
+                                  Utilities.formatDate(fechaAltaRaw, Session.getScriptTimeZone(), "dd/MM/yyyy") : 
+                                  String(fechaAltaRaw || "").trim();
 
-        if (nombre && (dni || legajo)) {
+        // Normalizamos nombre para el fallback
+        let nombreNorm = nombreRaw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+
+        if (nombreNorm && (dni || legajo)) {
           let infoObj = {
             legajo: legajo,
             dni: dni,
@@ -668,9 +661,9 @@ function actualizarCacheG3_Estaticos() {
             fechaAlta: fechaAltaFormateada
           };
           
-          mapaInfo[nombre] = infoObj;
-          // 👉 CRUCE DOBLE: Guardamos también usando el DNI como llave
-          if (dni) mapaInfo[dni] = infoObj; 
+          // 👉 GUARDADO DOBLE: Guardamos usando DNI como llave maestra, y Nombre como respaldo
+          if (dni) mapaInfo[dni] = infoObj;
+          mapaInfo[nombreNorm] = infoObj; 
         }
       }
     }
@@ -684,23 +677,27 @@ function actualizarCacheG3_Estaticos() {
     if (sheetTel) {
       const dataTel = sheetTel.getDataRange().getValues();
       for (let i = 1; i < dataTel.length; i++) {
-        let nombre = String(dataTel[i][0]).trim().toLowerCase();
+        let nombreNorm = String(dataTel[i][0]).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
         let telRaw = String(dataTel[i][2] || "").trim(); 
         
-        // 👉 SOLUCIÓN: El Regex \D elimina cualquier letra o texto (ej: "ultimos")
+        // 👉 EXTRACCIÓN ESTRICTA
         let telNumerico = telRaw.replace(/\D/g, ''); 
         
-        // Solo sobrescribe si el resultado numérico es un teléfono válido (al menos 8 dígitos)
-        if (nombre && nombre !== "chofer asignado" && telNumerico.length >= 8) {
-          if (!mapaInfo[nombre]) mapaInfo[nombre] = {}; 
-          mapaInfo[nombre].telefono = telNumerico; 
+        if (nombreNorm && nombreNorm !== "chofer asignado" && telNumerico.length >= 8) {
+          
+          if (!mapaInfo[nombreNorm]) mapaInfo[nombreNorm] = {}; 
+          mapaInfo[nombreNorm].telefono = telNumerico; 
+          
+          // Si el objeto ya tenía un DNI (porque vino de la hoja Legajos), actualizamos también el nodo del DNI
+          if (mapaInfo[nombreNorm].dni) {
+             mapaInfo[mapaInfo[nombreNorm].dni].telefono = telNumerico;
+          }
         }
       }
     }
   } catch(e) { 
     console.error("Error G3 Teléfonos:", e); 
-  }
-  
+  }  
   // --- 5. ALMACENAMIENTO CACHÉ ---
   if (typeof escribirChunksEnFila === 'function') {
     escribirChunksEnFila(hojaCache, 4, JSON.stringify(mapaDnis));
