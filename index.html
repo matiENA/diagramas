@@ -219,7 +219,8 @@
     showToast("Sesión cerrada correctamente.", "success");
 };
 
-// 👉 CORRECCIÓN 1: RESTAURAR EL LOGIN CON GOOGLE.SCRIPT.RUN (El nativo y confiable)
+
+// 👉 SOLUCIÓN: LOGIN VÍA FETCH CON EVASIÓN DE CORS PARA HOSTINGS EXTERNOS (Render, Vercel, etc.)
 window.procesarLogin = function() {
     const user = document.getElementById('login-user').value.trim();
     const pass = document.getElementById('login-pass').value.trim();
@@ -232,33 +233,45 @@ window.procesarLogin = function() {
         return;
     }
 
+    // Feedback visual
     btn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Validando...`;
     btn.disabled = true;
     errorBox.classList.add('hidden');
 
-    // Usamos el entorno nativo de Apps Script para evitar bloqueos CORS/Fetch
-    google.script.run
-        .withSuccessHandler(function(res) {
-            if (res.success) {
-                sessionStorage.setItem('eor_session_token', res.token);
-                sessionStorage.setItem('eor_session_role', res.rol);
-                localStorage.setItem('usuarioActivo', user); 
-                desbloquearSistema();
-            } else {
-                errorBox.innerText = res.error || "Credenciales incorrectas.";
-                errorBox.classList.remove('hidden');
-            }
-            btn.innerHTML = "Ingresar al Sistema";
-            btn.disabled = false;
-        })
-        .withFailureHandler(function(err) {
-            errorBox.innerText = "Error de red. Intente nuevamente.";
+    // Fetch hacia el backend de Google Apps Script
+    fetch(API_URL, {
+        method: 'POST',
+        // ⚠️ CRÍTICO: El header text/plain evita que el navegador lance un error de CORS (Preflight OPTIONS)
+        headers: {
+            "Content-Type": "text/plain;charset=utf-8" 
+        },
+        body: JSON.stringify({ action: 'login', usuario: user, password: pass })
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (res.success) {
+            // Guardamos la sesión
+            sessionStorage.setItem('eor_session_token', res.token);
+            sessionStorage.setItem('eor_session_role', res.rol);
+            // El navegador memoriza quién hizo login
+            localStorage.setItem('usuarioActivo', user); 
+            
+            desbloquearSistema();
+        } else {
+            errorBox.innerText = res.error || "Acceso denegado.";
             errorBox.classList.remove('hidden');
-            btn.innerHTML = "Ingresar al Sistema";
-            btn.disabled = false;
-        })
-        .validarLogin(user, pass);
-};
+        }
+    })
+    .catch(err => {
+        errorBox.innerText = "Error de red. Intente nuevamente.";
+        errorBox.classList.remove('hidden');
+        console.error("Error en Fetch Login:", err);
+    })
+    .finally(() => {
+        btn.innerHTML = "Ingresar al Sistema";
+        btn.disabled = false;
+    });
+}
 
 window.sincronizarBackend = function() {
     const btn = document.getElementById('btn-sync-global');
