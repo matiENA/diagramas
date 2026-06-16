@@ -2055,123 +2055,7 @@ const normalizarNombreTD = (nom) => (nom||"").trim().toLowerCase().normalize("NF
 // --- NUEVO SISTEMA DE RENDERIZADO Y CONTROL DE TDs ---
 // ====================================================================
 
-window.obtenerTDsPorDia = function(nombreChofer, dniChofer, fechaIso) {
-    let tdsDia = [];
-    let nKey = (nombreChofer || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-    let dKey = String(dniChofer).trim();
-    
-    if (!fechaIso) return tdsDia;
-    let p = fechaIso.split('-');
-    let fechaComparar = `${p[2]}/${p[1]}/${p[0]}`; 
 
-    // [UPDATE] Cambio de colores para mejorar el contraste en la UI del calendario
-    if(tdGlobalData.campo[nKey])   
-        tdGlobalData.campo[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Campo', hex: '#eab308'})); // Antes: #FFFF99
-    if(tdGlobalData.infinia[dKey]) 
-        tdGlobalData.infinia[dKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Infinia', hex: '#06b6d4'}));
-    if(tdGlobalData.liviano[nKey]) 
-        tdGlobalData.liviano[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Liviano', hex: '#64748b'})); // Antes: #FFFFFF
-    if(tdGlobalData.euro[nKey])    
-        tdGlobalData.euro[nKey].filter(v => v.fecha === fechaComparar).forEach(v => tdsDia.push({...v, origen: 'Euro', hex: '#14b8a6'}));
-
-    return tdsDia;
-};
-window.generarTDsEsquinaFront = function(nombreChofer, dniChofer, fechaIso) {
-    let tdsDia = obtenerTDsPorDia(nombreChofer, dniChofer, fechaIso);
-    if (tdsDia.length === 0) return '';
-
-    let html = `<div class="absolute bottom-1 left-1 flex flex-wrap gap-0.5 z-10 w-[90%]" id="dots-td-${fechaIso}">`; 
-
-    tdsDia.forEach(td => {
-        let objActual = tdGlobalData.estados[td.td];
-        let checked = (objActual && typeof objActual === 'object') ? objActual.estado : (objActual === true);
-        
-        // Aplicamos el principio de Prägnanz: Forma simple (círculo) con stroke para definir límites
-        if (checked) {
-            html += `<span class="td-dot" style="background-color: ${td.hex}; border-color: rgba(0,0,0,0.2);" title="Entregado"></span>`;
-        } else {
-            // Pendiente: Solo el borde del color correspondiente para reducir ruido visual
-            html += `<span class="td-dot" style="background-color: transparent; border: 1.5px solid ${td.hex};" title="Pendiente"></span>`;
-        }
-    });
-
-    html += `</div>`;
-    return html;
-};
-
-window.toggleTDDesdeModal = function(event, tdId, hexOriginal, safeId, isoStr) {
-    if(event) event.stopPropagation();
-
-    // 1. Lógica de lectura compatible con el nuevo objeto de estado
-    let objActual = tdGlobalData.estados[tdId];
-    let estadoActual = false;
-    if (objActual !== undefined) {
-        estadoActual = typeof objActual === 'object' ? objActual.estado === true : objActual === true;
-    }
-    
-    let nuevoEstado = !estadoActual;
-    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
-
-    // 2. Actualizamos la memoria local (caché frontend)
-    tdGlobalData.estados[tdId] = { estado: nuevoEstado, usuario: usuarioLogueado };
-
-    // A. Actualizar Checkbox del Modal
-    let el = document.getElementById(`modal-td-ui-${tdId}`);
-    let icon = document.getElementById(`modal-td-icon-${tdId}`);
-    let extraPanel = document.getElementById(`td-extra-${tdId}`);
-
-    if (el && icon) {
-        el.style.color = nuevoEstado ? '#ffffff' : '#4b5563';
-        el.style.backgroundColor = nuevoEstado ? hexOriginal : 'transparent';
-        icon.innerText = nuevoEstado ? '✓' : '☐';
-        icon.style.color = nuevoEstado ? '#ffffff' : hexOriginal;
-    }
-
-    // B. Actualizar Circulito del Calendario Inmediatamente
-    let dotsContainer = document.getElementById(`dots-td-${isoStr}`);
-    if(dotsContainer) {
-        const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
-        if(chofer){
-            let nKey = chofer.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-            let datosDni = dnisGlobales[nKey];
-            let dniChofer = datosDni ? (datosDni.dni || datosDni) : "";
-            dotsContainer.outerHTML = generarTDsEsquinaFront(chofer.nom, dniChofer, isoStr);
-        }
-    }
-
-    // Capturar valores de los inputs dinámicos de 6 dígitos
-    let inputsExtra = document.querySelectorAll(`.td-extra-input-${tdId}`);
-    let valoresAdicionales = [];
-    inputsExtra.forEach(input => {
-        let val = input.value.trim();
-        if (val.length === 6 && !isNaN(val)) valoresAdicionales.push(val);
-    });
-
-    // C. Enviar a Backend con la firma del usuario
-    fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ 
-            action: 'toggleEstadoTD', 
-            tdId: tdId, 
-            estado: nuevoEstado,
-            codigosExtra: valoresAdicionales,
-            usuario: usuarioLogueado // 👉 FIRMA INYECTADA
-        })
-    }).then(r => r.json()).then(res => {
-        if (!res.success) throw new Error();
-    }).catch(err => {
-        showToast("Error guardando estado TD. Revise su conexión.", "error");
-        // Revertir memoria local en caso de error
-        tdGlobalData.estados[tdId] = objActual; 
-        if (el && icon) {
-            el.style.backgroundColor = estadoActual ? hexOriginal : 'transparent';
-            el.style.color = estadoActual ? '#ffffff' : '#4b5563';
-            icon.innerText = estadoActual ? '✓' : '☐';
-            icon.style.color = estadoActual ? '#ffffff' : hexOriginal;
-        }
-        if (extraPanel) extraPanel.className = `bg-gray-50 border-t border-gray-100 p-1.5 ${estadoActual ? 'block' : 'hidden'}`;
-    });
-};
 
 // --> NUEVO: MANEJO DE DATOS EXTRA EN TDs (Gestión Dinámica)
 window.agregarInputTD = function(tdId) {
@@ -2192,52 +2076,6 @@ window.agregarInputTD = function(tdId) {
     newInput.focus();
 };
 
-window.guardarDatosExtraTD = function(tdId) {
-    const inputs = document.querySelectorAll(`.td-extra-input-${tdId}`);
-    let valores = [];
-    
-    inputs.forEach(inp => {
-        let val = inp.value.replace(/\D/g, ''); 
-        if (val.length === 6) valores.push(val);
-        inp.value = val; 
-        // 1. Feedback visual de carga (cargando...)
-        inp.classList.add('opacity-50');
-    });
-
-// Buscar este bloque dentro de guardarDatosExtraTD:
-if (!tdGlobalData.extra) tdGlobalData.extra = {};
-tdGlobalData.extra[tdId] = valores;
-
-    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida"; // 👉 NUEVO
-
-    fetch(API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ 
-            action: 'actualizarExtraTD', 
-            tdId: tdId, 
-            valores: valores,
-            usuario: usuarioLogueado // 👉 NUEVO
-        })
-    }).then(r => r.json()).then(res => {
-        if (!res.success) {
-            showToast("Error al guardar la Hoja de Ruta", "error");
-            inputs.forEach(inp => inp.classList.remove('opacity-50'));
-        } else {
-            // 2. Feedback visual de ÉXITO (Gestalt: Carga cognitiva reducida)
-            // Se marca visualmente que el dato ya está asegurado en BD
-            inputs.forEach(inp => {
-                inp.classList.remove('opacity-50');
-                if(inp.value.length === 6) {
-                    inp.classList.remove('bg-white', 'text-indigo-900', 'border-gray-300', 'shadow-inner');
-                    inp.classList.add('bg-gray-100', 'text-gray-500', 'border-transparent', 'opacity-80');
-                }
-            });
-        }
-    }).catch(e => {
-        showToast("Error de conexión guardando Hoja de Ruta", "error");
-        inputs.forEach(inp => inp.classList.remove('opacity-50'));
-    });
-};
 
 window.manejarSeleccionCalendario = function(isoStr, event, safeId) {
         window.getSelection().removeAllRanges(); 
@@ -2280,22 +2118,17 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
     const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
     if(!chofer) return;
 
-    let nKey = chofer.nom.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-    
-    // 👉 CRUCE ANTIFALLOS (Igual al de la Ficha Individual)
-    let datosDni = dnisGlobales[nKey];
-    let dniDelChofer = datosDni ? (datosDni.dni || datosDni) : null;
-    let datosChoferObj = (dniDelChofer ? telefonosGlobales[dniDelChofer] : null) || telefonosGlobales[nKey] || {};
-    let dniChofer = datosChoferObj.dni || dniDelChofer || "";
-
     let dStart = new Date(startIso + "T12:00:00"); 
     let dEnd = new Date(endIso + "T12:00:00");
     let totalKmRango = 0; let rangoActivos = 0, rangoFrancos = 0, rangoVacaciones = 0, rangoAusencias = 0;
-    let currentDate = new Date(dStart);
     
-    let tdsEnRango = [];
+    let currentDate = new Date(dStart);
     let htmlBadgesDiarios = `<div class="flex gap-2 overflow-x-auto custom-scrollbar pb-2 pt-1 mt-1 w-full snap-x">`;
     
+    // 👉 NUEVA SECCIÓN: Aquí almacenaremos el HTML de los detalles de viaje
+    let htmlDetalleViajes = ''; 
+    let hayViajes = false;
+
     while(currentDate <= dEnd) {
         let isoCurr = formatIsoShort(currentDate); 
         let valRaw = getValDiaGlobal(chofer.dias, currentDate);
@@ -2324,32 +2157,54 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
             else bgClass = 'bg-white text-blue-600 border-2 border-blue-400';
         }
 
-
         let diaText = String(currentDate.getDate()).padStart(2, '0') + '/' + String(currentDate.getMonth() + 1).padStart(2, '0');
         let badgeContent = valRaw || '-';
         
-        // 👉 CORRECCIÓN 3: EXTRACCIÓN HÍBRIDA (KMs seguros + Detalle visual)
         let kmDia = window.obtenerKmDia(chofer.nom, isoCurr);
         totalKmRango += kmDia;
         
         let kmHtml = '';
-        if (kmDia > 0) {
-            let detViaje = window.obtenerDetalleViajeDia(chofer.nom, isoCurr);
-            let tooltip = `Total: ${kmDia} km`;
-            let hrStr = '';
-            
-            if (detViaje) {
-                hrStr = (detViaje.hoja_ruta && detViaje.hoja_ruta.length > 0) ? detViaje.hoja_ruta.filter(Boolean).join(', ') : '';
-                if(detViaje.campo > 0) tooltip += ` | Campo: ${detViaje.campo}`;
-                if(detViaje.liviano > 0) tooltip += ` | Liv: ${detViaje.liviano}`;
-                if(detViaje.euro > 0) tooltip += ` | Euro: ${detViaje.euro}`;
-                if(detViaje.infiniaD > 0) tooltip += ` | Inf: ${detViaje.infiniaD}`;
-            }
+        let detViaje = window.obtenerDetalleViajeDia(chofer.nom, isoCurr);
 
+        if (kmDia > 0) {
+            // LIMPIEZA: Solo KMs en el badge azul, sin Hojas de Ruta
             kmHtml = `
-            <div class="bg-indigo-50/90 text-indigo-800 w-full text-center py-1 border-t border-indigo-100 shadow-inner flex flex-col items-center justify-center min-h-[30px] shrink-0" title="${tooltip}">
+            <div class="bg-indigo-50/90 text-indigo-800 w-full text-center py-1 border-t border-indigo-100 shadow-inner flex flex-col items-center justify-center min-h-[30px] shrink-0" title="KMs del día">
                 <span class="text-[10px] font-black leading-none">${kmDia} <span class="text-[8px] font-normal text-indigo-500">km</span></span>
-                ${hrStr ? `<span class="text-[7px] font-mono bg-white border border-indigo-200 text-indigo-600 px-1 rounded mt-0.5 max-w-[90%] truncate shadow-[0_1px_2px_rgba(0,0,0,0.05)]">HR: ${hrStr}</span>` : ''}
+            </div>`;
+        }
+
+        // 👉 NUEVA LÓGICA DE RENDERIZADO DEL MÓDULO DE VIAJES
+        if (detViaje && (detViaje.campo > 0 || detViaje.liviano > 0 || detViaje.euro > 0 || detViaje.infiniaD > 0 || detViaje.hoja_ruta.length > 0)) {
+            hayViajes = true;
+            let hrArr = detViaje.hoja_ruta || [];
+            if (!Array.isArray(hrArr) || hrArr.length === 0) hrArr = [''];
+
+            htmlDetalleViajes += `
+            <div class="bg-white border border-indigo-100 rounded-xl p-4 shadow-sm mb-3 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-center border-b border-gray-100 pb-2 mb-3">
+                    <span class="font-black text-indigo-900 text-sm flex items-center gap-1.5"><svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> ${isoCurr.split('-').reverse().join('/')}</span>
+                    <span class="text-[10px] font-black bg-indigo-50 text-indigo-800 px-2.5 py-1 rounded-md border border-indigo-200 shadow-sm">TOTAL: ${kmDia} KM</span>
+                </div>
+                
+                <div class="grid grid-cols-4 gap-2 mb-4">
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-2 text-center shadow-inner"><span class="block text-[9px] uppercase font-bold text-gray-500 mb-0.5">Liviano</span><span class="text-[11px] font-black text-gray-800">${detViaje.liviano}</span></div>
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-2 text-center shadow-inner"><span class="block text-[9px] uppercase font-bold text-gray-500 mb-0.5">Euro</span><span class="text-[11px] font-black text-gray-800">${detViaje.euro}</span></div>
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-2 text-center shadow-inner"><span class="block text-[9px] uppercase font-bold text-gray-500 mb-0.5">Campo</span><span class="text-[11px] font-black text-gray-800">${detViaje.campo}</span></div>
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-2 text-center shadow-inner"><span class="block text-[9px] uppercase font-bold text-gray-500 mb-0.5">Inf. Diesel</span><span class="text-[11px] font-black text-gray-800">${detViaje.infiniaD}</span></div>
+                </div>
+                
+                <div class="flex flex-col gap-2 bg-indigo-50/30 p-3 rounded-lg border border-indigo-50">
+                    <span class="text-[10px] uppercase font-black text-indigo-400 tracking-wider flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> N° Hojas de Ruta</span>
+                    <div class="flex flex-wrap gap-2 items-center" id="hr-container-${isoCurr}">
+                        ${hrArr.map(hr => `
+                        <div class="flex items-center relative group">
+                            <input type="text" maxlength="8" placeholder="000000" class="hr-input-${isoCurr} w-24 text-center px-2 py-1.5 text-xs font-mono font-bold border border-gray-300 rounded shadow-inner outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-indigo-900 bg-white" value="${hr}" onchange="guardarHojaDeRutaViaje('${chofer._safeId}', '${isoCurr}')">
+                            <button type="button" onclick="this.parentElement.remove(); guardarHojaDeRutaViaje('${chofer._safeId}', '${isoCurr}');" class="absolute -right-2 -top-2 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 bg-white hover:bg-red-50 rounded-full shadow border border-red-100 w-5 h-5 flex items-center justify-center font-bold transition-all text-xs z-10">×</button>
+                        </div>`).join('')}
+                        <button type="button" onclick="agregarInputHR('${isoCurr}', '${chofer._safeId}')" class="px-3 py-1.5 text-[10px] font-black text-indigo-600 bg-indigo-100 hover:bg-indigo-200 border border-indigo-300 rounded transition-colors shadow-sm">+ Añadir N°</button>
+                    </div>
+                </div>
             </div>`;
         }
 
@@ -2364,9 +2219,6 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
             </div>
         </div>`;
 
-        let tdsDia = obtenerTDsPorDia(chofer.nom, dniChofer, isoCurr);
-        tdsDia.forEach(td => tdsEnRango.push({...td, iso: isoCurr}));
-
         currentDate.setDate(currentDate.getDate() + 1);
     }
     htmlBadgesDiarios += `</div>`;
@@ -2374,78 +2226,7 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
     let diffDays = Math.round((dEnd - dStart) / (1000 * 60 * 60 * 24)) + 1;
     let textoFecha = startIso === endIso ? `${startIso.split('-').reverse().join('/')}` : `${startIso.split('-').reverse().join('/')} al ${endIso.split('-').reverse().join('/')}`;
 
-    let htmlTDs = '';
-    if (tdsEnRango.length > 0) {
-        htmlTDs = `
-        <div class="mt-2 pt-4 border-t border-indigo-800/60 w-full animate-[fadeIn_0.3s_ease-out]">
-            <span class="text-indigo-300 text-[10px] font-bold uppercase tracking-wider block mb-2 flex items-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-                Tickets de Despacho (TDs) y N° hoja de ruta
-            </span>
-            <div class="flex flex-wrap gap-3">`;
-        
-tdsEnRango.forEach(td => {
-            let objActual = tdGlobalData.estados[td.td];
-            let checked = false;
-            let tooltipUser = "";
-            
-            if (objActual !== undefined) {
-                if (typeof objActual === 'object') {
-                    checked = objActual.estado === true;
-                    tooltipUser = objActual.usuario ? ` | Por: ${objActual.usuario}` : "";
-                } else {
-                    checked = objActual === true;
-                }
-            }
-
-            let bgHex = checked ? td.hex : 'transparent';
-            let textHex = checked ? '#ffffff' : '#4b5563';
-            let borderHex = checked ? td.hex : '#d1d5db';
-
-            let extraArr = tdGlobalData.extra && tdGlobalData.extra[td.td] ? tdGlobalData.extra[td.td] : [];
-            if (!Array.isArray(extraArr) || extraArr.length === 0) extraArr = ['']; 
-
-            htmlTDs += `
-            <div class="flex-shrink-0 flex flex-col border border-gray-200 rounded-xl bg-white shadow-sm w-[150px] transition-all duration-300 hover:shadow-md group" title="Origen: ${td.origen}${tooltipUser}">
-                
-                <div class="cursor-pointer p-2 border-b border-gray-100 transition-colors"
-                     onclick="toggleTDDesdeModal(event, '${td.td}', '${td.hex}', '${safeId}', '${td.iso}')">
-                    <div id="modal-td-ui-${td.td}"
-                         class="flex items-center justify-center gap-1.5 text-[11px] font-bold tracking-wide px-2 py-1.5 rounded-lg shadow-sm border transition-all duration-200"
-                         style="background-color: ${bgHex}; color: ${textHex}; border-color: ${borderHex};">
-                        <span id="modal-td-icon-${td.td}">${checked ? '✓' : '☐'}</span>
-                        <span>${td.td}</span>
-                    </div>
-                </div>
-
-                <div id="td-extra-${td.td}" class="p-2 flex flex-col gap-1.5 w-full bg-gray-50/50 rounded-b-xl block">
-                    <span class="text-[8px] uppercase font-bold text-gray-400 tracking-wider text-center mb-0.5">N° Hoja de Ruta</span>
-                    
-                    <div id="inputs-container-${td.td}" class="flex flex-col gap-1.5" onclick="event.stopPropagation()">
-                        ${extraArr.map((val, index) => `
-                            <div class="flex items-center gap-1 w-full relative">
-                                <input type="text" maxlength="6" placeholder="000000"
-                                       class="td-extra-input-${td.td} w-full text-center px-2 py-1 text-[11px] font-mono font-bold rounded outline-none transition-all duration-300 ${val.length === 6 ? 'bg-gray-100 text-gray-500 border-transparent opacity-80' : 'bg-white text-indigo-900 border-gray-300 shadow-inner focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400'}"
-                                       value="${val}" 
-                                       onfocus="this.classList.remove('bg-gray-100', 'text-gray-500', 'border-transparent', 'opacity-80'); this.classList.add('bg-white', 'text-indigo-900', 'border-gray-300', 'shadow-inner', 'focus:border-indigo-400');"
-                                       onchange="guardarDatosExtraTD('${td.td}')" 
-                                       oninput="this.value = this.value.replace(/[^0-9]/g, '');"
-                                       onkeydown="if(event.key === 'Enter') { event.preventDefault(); this.blur(); guardarDatosExtraTD('${td.td}'); }">
-                                
-                                <button type="button" onclick="this.parentElement.remove(); guardarDatosExtraTD('${td.td}');" class="text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 rounded w-6 h-6 shrink-0 flex items-center justify-center text-lg leading-none transition-colors" title="Quitar">×</button>
-                            </div>
-                        `).join('')}
-                    </div>
-                    
-                    <button type="button" onclick="agregarInputExtraTD('${td.td}', event)" class="mt-1 w-full py-1 text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50/50 hover:bg-indigo-100 rounded-md border border-dashed border-indigo-200 transition-colors">
-                        + Sumar N°
-                    </button>
-                </div>
-            </div>`;
-        });
-        htmlTDs += `</div></div>`;
-    }
-
+    // Construimos el HTML Final
     panel.innerHTML = `
         <div class="bg-indigo-900 text-white p-4 sm:p-5 rounded-xl shadow-xl border border-indigo-800 flex flex-col gap-4 animate-[fadeInDown_0.2s_ease-out]">
             
@@ -2470,7 +2251,7 @@ tdsEnRango.forEach(td => {
                 ${htmlBadgesDiarios}
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 pt-2 border-t border-indigo-800/60 mt-1">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 py-3 border-y border-indigo-800/60 mt-1">
                 <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Activos</span><span class="font-black text-white text-lg">${rangoActivos}</span></div>
                 <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Francos</span><span class="font-black text-white text-lg">${rangoFrancos}</span></div>
                 <div class="flex justify-between items-center bg-indigo-800/40 border border-indigo-700/50 p-2.5 rounded-lg shadow-inner"><span class="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Vacaciones</span><span class="font-black text-white text-lg">${rangoVacaciones}</span></div>
@@ -2478,7 +2259,17 @@ tdsEnRango.forEach(td => {
                 <div class="flex justify-between items-center bg-[#e0e7ff] border border-[#c7d2fe] p-2.5 rounded-lg shadow-inner transition-all hover:bg-[#c7d2fe] col-span-2 md:col-span-1"><span class="text-[10px] font-bold text-[#1e3a8a] uppercase tracking-wider flex items-center gap-1"><svg class="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> KMs</span><span class="font-black text-[#1e3a8a] text-lg">${totalKmRango.toLocaleString('es-AR')}</span></div>
             </div>
 
-            ${htmlTDs} 
+            ${hayViajes ? `
+            <div class="mt-2 w-full animate-[fadeIn_0.3s_ease-out]">
+                <span class="text-indigo-300 text-[10px] font-bold uppercase tracking-wider block mb-3 flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path></svg>
+                    📍 Detalle de Viajes y Hojas de Ruta
+                </span>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    ${htmlDetalleViajes}
+                </div>
+            </div>` : ''}
+
         </div>`;            
     
     panel.classList.remove('hidden');
@@ -2487,6 +2278,68 @@ tdsEnRango.forEach(td => {
         document.getElementById('header-km-rango').classList.remove('hidden'); 
     }
     window.renderizarHistorialEventos(chofer.nom, startIso, endIso);
+};
+
+// 👉 FUNCIONES DE APOYO PARA EL NUEVO MÓDULO DE VIAJES (Reemplazan a las de TD)
+window.agregarInputHR = function(isoStr, safeId) {
+    const wrapper = document.getElementById(`hr-container-${isoStr}`);
+    if (!wrapper) return;
+    const btnAñadir = wrapper.querySelector('button:last-child');
+    
+    const divContainer = document.createElement('div');
+    divContainer.className = "flex items-center relative group animate-[fadeIn_0.2s_ease-out]";
+    divContainer.innerHTML = `
+        <input type="text" maxlength="8" placeholder="000000" class="hr-input-${isoStr} w-24 text-center px-2 py-1.5 text-xs font-mono font-bold border border-gray-300 rounded shadow-inner outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-indigo-900 bg-white" onchange="guardarHojaDeRutaViaje('${safeId}', '${isoStr}')" onkeydown="if(event.key === 'Enter') { event.preventDefault(); this.blur(); guardarHojaDeRutaViaje('${safeId}', '${isoStr}'); }">
+        <button type="button" onclick="this.parentElement.remove(); guardarHojaDeRutaViaje('${safeId}', '${isoStr}');" class="absolute -right-2 -top-2 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 bg-white hover:bg-red-50 rounded-full shadow border border-red-100 w-5 h-5 flex items-center justify-center font-bold transition-all text-xs z-10">×</button>
+    `;
+    
+    wrapper.insertBefore(divContainer, btnAñadir);
+    divContainer.querySelector('input').focus();
+};
+
+window.guardarHojaDeRutaViaje = function(safeId, isoStr) {
+    const inputs = document.querySelectorAll(`.hr-input-${isoStr}`);
+    let valoresHR = [];
+    
+    inputs.forEach(inp => {
+        let val = inp.value.trim(); 
+        if (val !== "") valoresHR.push(val);
+        inp.classList.add('opacity-50', 'pointer-events-none');
+    });
+
+    const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
+    if(!chofer) return;
+
+    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+
+    // Llamada bidireccional a la planilla madre de KMs
+    fetch(API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ 
+            action: 'guardarHojaRutaPlanilla', 
+            nombre: chofer.nom, 
+            fecha: isoStr,
+            hojas: valoresHR,
+            usuario: usuarioLogueado
+        })
+    }).then(r => r.json()).then(res => {
+        inputs.forEach(inp => inp.classList.remove('opacity-50', 'pointer-events-none'));
+        if (!res.success) {
+            showToast("Error al guardar la Hoja de Ruta", "error");
+        } else {
+            showToast("Hoja de Ruta enlazada a la planilla.", "success");
+            
+            // Actualización instantánea de la memoria local para no tener que refrescar
+            let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+            if (viajesDetalleGlobal[nLimpio] && viajesDetalleGlobal[nLimpio][isoStr]) {
+                viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = valoresHR;
+            }
+        }
+    }).catch(e => {
+        showToast("Error de red guardando Hoja de Ruta", "error");
+        inputs.forEach(inp => inp.classList.remove('opacity-50', 'pointer-events-none'));
+    });
 };
 
 window.guardarEstadoDesdeRango = function(safeId, startIso, endIso) {
