@@ -1613,7 +1613,6 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     let fBaseObj = new Date(fechaGlobalContexto + "T12:00:00");
     const targetMes = String(fBaseObj.getMonth() + 1).padStart(2, '0');
     const targetAnio = String(fBaseObj.getFullYear()).slice(-2);
-    const sufijoMesAnio = `/${targetMes}/${targetAnio}`;
 
     let estadoDiaRaw = getValDiaGlobal(chofer.dias, fBaseObj);
     let estadoDiaBase = getBaseState(estadoDiaRaw);
@@ -1674,7 +1673,6 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
             let rawVal = getValDiaGlobal(chofer.dias, fLoop);
             let baseVal = getBaseState(rawVal);
 
-            // 👉 ACTUALIZACIÓN: Puntos azules (Lectura segura api_km + Tooltip detallado)
             let kmDia = window.obtenerKmDia(chofer.nom, isoStr);
             
             let dotHtml = '';
@@ -1697,8 +1695,6 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
             let obsHtml = fechasConObs.has(isoStr) ? `<span class="w-1.5 h-1.5 rounded-full bg-red-500 shadow-sm" title="Observación"></span>` : '';
             let docVenHtml = fechasVencimiento.has(isoStr) ? `<span class="flex items-center justify-center w-2.5 h-2.5 rounded-sm bg-red-500 text-white text-[7px] font-black shadow-sm leading-none" title="Vencimiento Docs">D</span>` : '';
             
-            let tdsEsquinaHtml = generarTDsEsquinaFront(chofer.nom, dniDelChofer, isoStr);
-
             let bgClass = 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-gray-100'; 
             let textVal = rawVal ? rawVal : ''; 
 
@@ -1716,12 +1712,12 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
             else if (['IND','E','A','S','ART'].includes(baseVal)) { bgClass = 'bg-[#e06666] border-transparent text-white font-bold shadow-sm hover:brightness-95'; }                
             let isToday = (isCurrentMonth && i === fBaseObj.getDate()) ? 'ring-2 ring-primary ring-offset-1' : '';
             
+         // Eliminamos el llamado a la función vieja de los TDs
          gridHtml += `
           <div data-fecha="${isoStr}" onclick="manejarSeleccionCalendario('${isoStr}', event, '${chofer._safeId}')" class="celda-calendario relative cursor-pointer w-full aspect-square flex flex-col items-center justify-center border rounded-lg ${bgClass} ${isToday} transition-all select-none overflow-hidden group">
               <span class="absolute top-1 left-1.5 text-[9px] font-bold opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none">${i}</span>
               <span class="text-xs sm:text-sm font-black pointer-events-none drop-shadow-sm z-10 w-full text-center truncate px-0.5">${textVal}</span>
               <div class="absolute bottom-1 w-full flex justify-center items-center gap-0.5 pointer-events-none px-1">${dotHtml}${obsHtml}${docVenHtml}</div>
-              ${tdsEsquinaHtml}
           </div>`;
         }            
         let opacityClass = isCurrentMonth ? 'opacity-100 scale-100 border-indigo-300 shadow-md ring-2 ring-indigo-50' : 'opacity-80 scale-95 hover:opacity-100 hover:scale-100 border-gray-200 shadow-sm transition-all duration-300';
@@ -1954,7 +1950,6 @@ contenedor.innerHTML = html + getHTMLRestante(chofer, doc, hab, cert, apto, badg
             }, 50); // El delay garantiza que el motor del navegador ya pintó el DOM base
         }
     };
-
     
 function getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert) {
         let badgeApto = '<span class="text-[10px] text-gray-500 bg-gray-100 px-2 py-1 rounded font-bold border border-gray-200">SIN DATOS</span>';
@@ -2916,21 +2911,25 @@ function renderizarVistaMetricas(container) {
     };
 
 // 3. Filtra la lista del dropdown mientras el usuario escribe
-    window.filtrarDropdownIndividual = function() {
+window.filtrarDropdownIndividual = function() {
         const input = document.getElementById('input-busqueda-individual');
         const term = input.value.toLowerCase().trim();
         const btnClear = document.getElementById('btn-clear-individual');
         if (term.length > 0) btnClear.classList.remove('hidden'); else btnClear.classList.add('hidden');
         
         const filtrados = datosGlobales.filter(c => {
-            let nKey = (c.nom || '').toLowerCase().trim();
+            // Normalización estricta para asegurar que el cruce con el DNI nunca falle
+            let searchKey = String(c.nom || '').toLowerCase().trim();
+            let nKey = searchKey.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+            
             let datosDni = dnisGlobales[nKey];
             let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
 
-            return nKey.includes(term) || 
-                   String(c.id || '').toLowerCase().includes(term) || 
+            // Buscamos coincidencia en nombre, UTE, servicio o DNI
+            return searchKey.includes(term) || 
+                   String(c._safeId || '').toLowerCase().includes(term) || 
                    (c.srv || '').toLowerCase().includes(term) ||
-                   dniString.includes(term); // ¡DNI integrado aquí!
+                   dniString.includes(term); 
         });
         
         renderizarOpcionesIndividual(filtrados);
