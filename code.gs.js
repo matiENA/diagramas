@@ -135,12 +135,13 @@ function obtenerDiagramasCacheados() {
     entregasInfinia: {},
     fotosImgur: {},
     vencimientosObj: {}, // <-- Integrated Expirations Pipeline (Row 11)
+    nuevaSeccionViajes: [], // <-- NUEVO: Array para el detalle de viajes (Fila 12)
     kilometros: {},
     observaciones: {},
     aptosMedicos: {}
   };
 
-  // 2. Caché Base (Filas de la 1 a la 11)
+  // 2. Caché Base (Filas de la 1 a la 12)
   try {
     const hojaCache = ssMaestro.getSheetByName('API_CACHE_BASICO');
     if (hojaCache && hojaCache.getLastRow() > 0) {
@@ -166,6 +167,7 @@ function obtenerDiagramasCacheados() {
       payload.entregasInfinia  = parseSeguro(8)  || payload.entregasInfinia;
       payload.fotosImgur       = parseSeguro(9)  || payload.fotosImgur;
       payload.vencimientosObj  = parseSeguro(10) || payload.vencimientosObj; // <-- Fila 11
+      payload.nuevaSeccionViajes = parseSeguro(11) || payload.nuevaSeccionViajes; // <-- NUEVO: Fila 12
     }
   } catch (e) { 
     console.error("Error leyendo caché base:", e); 
