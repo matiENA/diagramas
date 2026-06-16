@@ -56,12 +56,8 @@ function doPost(e) {
     } else if (payload.action === 'marcarEntregado') {
       respuesta = guardarEstadoEntrega(payload.dni, payload.mes, payload.tdId, payload.estado);
       
-  // Reemplaza estas líneas dentro de doPost(e):
-    } else if (payload.action === 'toggleEstadoTD') { 
-      respuesta = guardarEstadoCheckboxTD(payload.tdId, payload.estado, payload.codigosExtra, payload.usuario); // 👉 NUEVO
-      
-    } else if (payload.action === 'actualizarExtraTD') { 
-      respuesta = guardarDatosExtraBackend(payload.tdId, payload.valores, payload.usuario); // 👉 NUEVO
+} else if (payload.action === 'guardarHojaRutaPlanilla') { 
+      respuesta = procesarGuardadoHojaRuta(payload.nombre, payload.fecha, payload.hojas, payload.usuario);
 
     // 👉 NUEVO: Endpoint para la Sincronización Total (Botón del Front-End)
     } else if (payload.action === 'sincronizarTotal') {
