@@ -295,22 +295,24 @@ function actualizarCacheTDsLivianoYEuro() {
 
 function obtenerDatosTDParaFront() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const hoja = ss.getSheetByName('td');
-  if (!hoja) return { estados: {}, codigosExtra: {} };
+  const hojaTD = ss.getSheetByName('td');
+  if (!hojaTD) return { campo:{}, infinia:{}, liviano:{}, euro:{}, estados:{}, codigosExtra:{} };
 
-  // Función interna para leer filas con chunks (A, B, C...)
-  const leerFila = (fila) => {
-    let vals = hoja.getRange(fila, 1, 1, hoja.getLastColumn()).getValues()[0];
-    return vals.join("").replace(/^'/, ""); // Quitamos la comilla de escape de Sheets
+  // 👉 LECTURA SEGURA: Evita el SyntaxError uniendo los chunks celda por celda
+  const leerFila = (numFila) => {
+    let values = hojaTD.getRange(numFila + ":" + numFila).getValues()[0];
+    let jsonStr = values.filter(String).map(c => String(c).replace(/^'/, "")).join("");
+    // Protegemos el código: Si el JSON está roto, devuelve vacío en lugar de colapsar la app
+    try { return jsonStr ? JSON.parse(jsonStr) : {}; } catch(e) { return {}; }
   };
 
   return {
-    campo: JSON.parse(leerFila(1) || "{}"),
-    infinia: JSON.parse(leerFila(2) || "{}"),
-    liviano: JSON.parse(leerFila(3) || "{}"),
-    euro: JSON.parse(leerFila(4) || "{}"),
-    estados: JSON.parse(hoja.getRange("A5").getValue() || "{}"),      // Checkboxes
-    codigosExtra: JSON.parse(hoja.getRange("A6").getValue() || "{}") // [NUEVO] Códigos 6 dígitos
+    campo: leerFila(1),
+    infinia: leerFila(2),
+    liviano: leerFila(3),
+    euro: leerFila(4),
+    estados: JSON.parse(hojaTD.getRange("A5").getValue() || "{}"),      // Checkboxes
+    codigosExtra: JSON.parse(hojaTD.getRange("A6").getValue() || "{}") // Códigos 6 dígitos
   };
 }
 
