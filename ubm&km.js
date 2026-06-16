@@ -89,7 +89,7 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
     let campoRaw    = row[5];   // Col F
     let infiniaDRaw = row[7];   // Col H
     let kmBackupRaw = row[8];   // Col I [8] (Respaldo)
-    let kmBaseRaw   = row[10];  // Col K [10] (Kilometros)
+    let kmBaseRaw   = row[16];  // Col q [10] (Kilometros)
     let hojaRutaRaw = row[19];  // Col T
 
     let nOriginal = String(nombreRaw).trim().toLowerCase(); 
