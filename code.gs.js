@@ -42,27 +42,18 @@ function doPost(e) {
     let payload = JSON.parse(e.postData.contents);
     
     if (payload.action === 'actualizarEstado') {
-  // DEBES AGREGAR payload.usuario AQUÍ:
-  respuesta = actualizarEstado(
-    payload.nombre, 
-    payload.startIso, 
-    payload.endIso, 
-    payload.est, 
-    payload.usuario // <--- Ahora el backend sí recibe quién lo hizo
-  );
-  } else if (payload.action === 'guardarDocumentos') {
+      respuesta = actualizarEstado(payload.nombre, payload.startIso, payload.endIso, payload.est, payload.usuario);
+      
+    } else if (payload.action === 'guardarDocumentos') {
       respuesta = guardarDocumentos(payload.nombre, payload.exVen, payload.licVen, payload.certVen);
       
-    } else if (payload.action === 'marcarEntregado') {
-      respuesta = guardarEstadoEntrega(payload.dni, payload.mes, payload.tdId, payload.estado);
-      
-} else if (payload.action === 'guardarHojaRutaPlanilla') { 
-      respuesta = procesarGuardadoHojaRuta(payload.nombre, payload.fecha, payload.hojas, payload.usuario);
+    // 👉 NUEVO: Endpoint Bidireccional de Hojas de Ruta
+    } else if (payload.action === 'guardarHojaRutaPlanilla') { 
+      respuesta = procesarGuardadoHojaRuta(payload.nombre, payload.fecha, payload.hojas, payload.usuario, payload.tractor); 
 
-    // 👉 NUEVO: Endpoint para la Sincronización Total (Botón del Front-End)
     } else if (payload.action === 'sincronizarTotal') {
       respuesta = ejecutarSincronizacionTotal();
-     // 👉 NUEVO: Endpoint para Autenticación (Login Wall)
+      
     } else if (payload.action === 'login') {
       respuesta = validarLogin(payload.usuario, payload.password);
     }
@@ -1214,3 +1205,86 @@ function registrarLog(usuarioResponsable, accion, detalles) {
   cell.setValue(JSON.stringify(logArray));
 }
 
+/**
+ * ============================================================================
+ * ESCRITURA BIDIRECCIONAL: HOJA DE RUTA EN PLANILLA "KM"
+ * ============================================================================
+ */
+function procesarGuardadoHojaRuta(nombre, fechaIso, hojasArr, usuario, tractor) {
+  try {
+    const ID_SHEET_KILOMETROS = '1Wr-_P4mDvldif_cAx08sp7yT8uTUrajI2HQAJF6tnGM';
+    const ssKm = SpreadsheetApp.openById(ID_SHEET_KILOMETROS); 
+    const sheetKm = ssKm.getSheetByName('KM') || ssKm.getSheets()[0];
+    
+    if (!sheetKm) return { success: false, error: "Pestaña KM no encontrada" };
+
+    const data = sheetKm.getDataRange().getValues();
+    
+    // Parseo de fecha para buscar
+    let fBase = new Date(fechaIso + "T12:00:00");
+    let tD = String(fBase.getDate()).padStart(2, '0');
+    let tM = String(fBase.getMonth() + 1).padStart(2, '0');
+    let tY = String(fBase.getFullYear()).slice(-2);
+    let shortDate = `${tD}/${tM}/${tY}`; // Ej: 15/06/26
+    
+    const normalizar = (n) => String(n).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    let nBuscado = normalizar(nombre);
+    let stringHojas = hojasArr.join(', ');
+    let actualizados = 0;
+
+    // Buscamos si la fila ya existe
+    for (let i = 1; i < data.length; i++) {
+        let nFila = normalizar(data[i][2]); 
+        if (nFila === nBuscado) {
+            let dFila = data[i][1]; 
+            let isMatch = false;
+            
+            if (dFila instanceof Date) {
+                if (dFila.getDate() === fBase.getDate() && dFila.getMonth() === fBase.getMonth() && dFila.getFullYear() === fBase.getFullYear()) {
+                    isMatch = true;
+                }
+            } else {
+                let strD = String(dFila).trim();
+                if (strD.startsWith(shortDate) || strD.startsWith(fechaIso) || strD.includes(shortDate)) {
+                    isMatch = true;
+                }
+            }
+
+            if (isMatch) {
+                sheetKm.getRange(i + 1, 20).setValue(stringHojas); // Columna T = 20
+                actualizados++;
+            }
+        }
+    }
+    
+    // 👉 LÓGICA DE INSERCIÓN (Si el usuario carga HR pero la fila aún no existía en KM)
+    if (actualizados === 0 && stringHojas !== "") {
+        let numColumnas = Math.max(20, sheetKm.getLastColumn());
+        let nuevaFila = new Array(numColumnas).fill("");
+        nuevaFila[0] = tractor || "";  // Col A: Dominio
+        nuevaFila[1] = shortDate;      // Col B: Fecha
+        nuevaFila[2] = nombre;         // Col C: Chofer
+        nuevaFila[19] = stringHojas;   // Col T: Hoja de Ruta
+        
+        sheetKm.appendRow(nuevaFila);
+        actualizados++;
+    }
+    
+    // Dejamos un Log del cambio
+    registrarLog(usuario, "EDITO_HOJA_RUTA", {
+        chofer: nombre,
+        fecha_viaje: fechaIso,
+        hojas_cargadas: hojasArr
+    });
+
+    // Actualizamos el Caché 12 para los próximos que entren al sistema
+    if (typeof generarJSONKilometros_Frecuente === 'function') {
+        generarJSONKilometros_Frecuente();
+    }
+
+    return { success: true, filas_actualizadas: actualizados };
+    
+  } catch(e) {
+      return { success: false, error: e.toString() };
+  }
+}
