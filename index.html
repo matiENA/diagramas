@@ -792,13 +792,10 @@ async function cargarDatosDesdeCache() {
     }
 }
 
+// --- [NUEVO] AUTO-REFRESH SILENCIOSO EXCLUSIVO PARA DATOS (DATA KEEPING) ---
 function sincronizacionSilenciosa() {
-    const elementoActivo = document.activeElement;
-    const isEditing = elementoActivo.tagName === 'INPUT' || 
-                      elementoActivo.tagName === 'SELECT' || 
-                      !document.getElementById('modal-editor').classList.contains('hidden');
-    
-    if (isEditing) return; 
+    // Al no tocar el DOM, ya no necesitamos la validación de "isEditing". 
+    // Podemos actualizar los datos crudos en el fondo sin interrumpir al usuario.
 
     Promise.all([
         fetch(`${API_URL}?action=obtenerDiagramasCacheados`).then(res => res.text()),
@@ -806,21 +803,17 @@ function sincronizacionSilenciosa() {
     ])
     .then(([jsonStringDiagramas, dataTDs]) => {
         try { 
-            const contenedorScrollSemanal = document.querySelector('.overflow-x-auto.custom-scrollbar');
-            const contenedorScrollLateral = document.getElementById('contenedor-filtros-lateral');
-            
-            let scrollSemanalLeft = contenedorScrollSemanal ? contenedorScrollSemanal.scrollLeft : 0;
-            let scrollSemanalTop = contenedorScrollSemanal ? contenedorScrollSemanal.scrollTop : 0;
-            let scrollLateralTop = contenedorScrollLateral ? contenedorScrollLateral.scrollTop : 0;
-            let scrollGlobalTop = window.scrollY;
-
+            // 1. Actualizar objeto de TDs
             window.tdGlobalData = {
                 campo: dataTDs.campo || {}, infinia: dataTDs.infinia || {},
                 liviano: dataTDs.liviano || {}, euro: dataTDs.euro || {},
                 estados: dataTDs.estados || {}, extra: dataTDs.codigosExtra || {}
             };
 
+            // 2. Parsear Diagramas
             const data = typeof jsonStringDiagramas === 'string' ? JSON.parse(jsonStringDiagramas) : jsonStringDiagramas;
+            
+            // 3. Reasignar Memoria Global de Conductores
             datosGlobales = (data.diagramas || []).filter(c => {
                 if (!c.nom) return false;
                 let nombreLimpio = String(c.nom).trim().toLowerCase();
@@ -841,6 +834,7 @@ function sincronizacionSilenciosa() {
                 return objNormalizado;
             };
 
+            // 4. Actualizar todos los cachés secundarios
             docsGlobales = normalizarClaves(data.documentos || {});
             habsGlobales = normalizarClaves(data.habilitaciones || {});
             certsGlobales = normalizarClaves(data.certificados || {});
@@ -852,6 +846,7 @@ function sincronizacionSilenciosa() {
             viajesGlobales = normalizarClaves(data.viajesCampo || {});
             fotosGlobales = data.fotosImgur || {};
 
+            // 5. Actualizar el detalle de viajes y hojas de ruta
             viajesDetalleGlobal = {};
             if (Array.isArray(data.nuevaSeccionViajes)) {
                 data.nuevaSeccionViajes.forEach(viaje => {
@@ -865,26 +860,16 @@ function sincronizacionSilenciosa() {
                     target.liviano += (parseFloat(viaje.liviano) || 0);
                     target.euro += (parseFloat(viaje.euro) || 0);
                     target.infiniaD += (parseFloat(viaje.infiniaD) || 0);
-                    if(viaje.hoja_ruta && String(viaje.hoja_ruta).trim() !== "" && !target.hoja_ruta.includes(viaje.hoja_ruta)) target.hoja_ruta.push(viaje.hoja_ruta);
+                    
+                    if(viaje.hoja_ruta && String(viaje.hoja_ruta).trim() !== "" && !target.hoja_ruta.includes(viaje.hoja_ruta)) {
+                        target.hoja_ruta.push(viaje.hoja_ruta);
+                    }
                 });
             }
 
-            filtrarTabla(); 
-
-            setTimeout(() => {
-                if(contenedorScrollSemanal) {
-                    const nuevoContenedor = document.querySelector('.overflow-x-auto.custom-scrollbar');
-                    if(nuevoContenedor) {
-                        nuevoContenedor.scrollLeft = scrollSemanalLeft;
-                        nuevoContenedor.scrollTop = scrollSemanalTop;
-                    }
-                }
-                if(contenedorScrollLateral) {
-                    const nuevoLateral = document.getElementById('contenedor-filtros-lateral');
-                    if(nuevoLateral) nuevoLateral.scrollTop = scrollLateralTop;
-                }
-                window.scrollTo(0, scrollGlobalTop);
-            }, 0);
+            // 👉 ELIMINADO: Se removió filtrarTabla() y toda la manipulación del DOM.
+            // El usuario no sufrirá interrupciones visuales ni se le cerrará el panel.
+            console.log("✅ Data Keeping: Bases de datos actualizadas en 2do plano sin tocar UI.");
 
         } catch (e) { 
             console.warn("Fallo silencioso en background fetch:", e);
