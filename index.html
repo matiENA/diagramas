@@ -1694,7 +1694,6 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
             else if (['IND','E','A','S','ART'].includes(baseVal)) { bgClass = 'bg-[#e06666] border-transparent text-white font-bold shadow-sm hover:brightness-95'; }                
             let isToday = (isCurrentMonth && i === fBaseObj.getDate()) ? 'ring-2 ring-primary ring-offset-1' : '';
             
-         // Eliminamos el llamado a la función vieja de los TDs
          gridHtml += `
           <div data-fecha="${isoStr}" onclick="manejarSeleccionCalendario('${isoStr}', event, '${chofer._safeId}')" class="celda-calendario relative cursor-pointer w-full aspect-square flex flex-col items-center justify-center border rounded-lg ${bgClass} ${isToday} transition-all select-none overflow-hidden group">
               <span class="absolute top-1 left-1.5 text-[9px] font-bold opacity-40 group-hover:opacity-70 transition-opacity pointer-events-none">${i}</span>
@@ -1932,6 +1931,28 @@ contenedor.innerHTML = html + getHTMLRestante(chofer, doc, hab, cert, apto, badg
             }, 50); // El delay garantiza que el motor del navegador ya pintó el DOM base
         }
     };
+    
+al inyetar las nuevas fucnioens rompe la funcinalida por lo uqe te paso el window,mostrar para que lo realices alli mismo; la separacion y confirmacion de lo guardado, 
+
+el fetch  se veia de esta manera:
+
+    // 4. Disparamos a la Nube (Background)
+    fetch(API_URL, {
+        method: 'POST',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ 
+            action: 'guardarHojaRutaPlanilla', 
+            nombre: chofer.nom, 
+            fecha: isoStr,
+            hojas: hrActuales,
+            usuario: localStorage.getItem('usuarioActivo') || "Sesión Perdida",
+            tractor: chofer.tractor 
+        })
+    }).then(r => r.json()).then(res => {
+        if (!res.success) showToast("Error al sincronizar HR en la nube.", "error");
+        else showToast("HR Guardada en Planilla.", "success");
+    }).catch(e => showToast("Error de red HR", "error"));
+}
     
 function getHTMLRestante(chofer, doc, hab, cert, apto, badgeExam, badgeLic, badgeCert) {
         let badgeApto = '<span class="text-[10px] text-gray-500 bg-gray-100 px-2 py-1 rounded font-bold border border-gray-200">SIN DATOS</span>';
@@ -2195,14 +2216,22 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
                 </div>
                 
                 <div class="flex flex-col gap-2 bg-indigo-50/30 p-3 rounded-lg border border-indigo-50">
-                    <span class="text-[10px] uppercase font-black text-indigo-400 tracking-wider flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> N° Hojas de Ruta</span>
-                    <div class="flex flex-wrap gap-2 items-center" id="hr-container-${isoCurr}">
-                        ${hrArr.map(hr => `
-                        <div class="flex items-center relative group">
-                           <input type="text" maxlength="25" placeholder="Ej: 384460/1/2" class="hr-input-${isoCurr} w-36 text-center px-2 py-1.5 text-xs font-mono font-bold border border-gray-300 rounded shadow-inner outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-indigo-900 bg-white" value="${hr}" oninput="this.value = this.value.replace(/[^0-9\\/]/g, '');" onchange="guardarHojaDeRutaViaje('${chofer._safeId}', '${isoCurr}')" onkeydown="if(event.key === 'Enter') { event.preventDefault(); this.blur(); }">
-                            <button type="button" onclick="this.parentElement.remove(); guardarHojaDeRutaViaje('${chofer._safeId}', '${isoCurr}');" class="absolute -right-2 -top-2 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 bg-white hover:bg-red-50 rounded-full shadow border border-red-100 w-5 h-5 flex items-center justify-center font-bold transition-all text-xs z-10">×</button>
-                        </div>`).join('')}
-                        <button type="button" onclick="agregarInputHR('${isoCurr}', '${chofer._safeId}')" class="px-3 py-1.5 text-[10px] font-black text-indigo-600 bg-indigo-100 hover:bg-indigo-200 border border-indigo-300 rounded transition-colors shadow-sm">+ Añadir N°</button>
+                    <span class="text-[10px] uppercase font-black text-indigo-400 tracking-wider flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> N° Hojas de Ruta Confirmadas</span>
+                    
+                    <div class="flex flex-wrap gap-2 items-center min-h-[28px]" id="hr-confirmed-${isoCurr}">
+                        ${hrArr.length > 0 && hrArr[0] !== "" ? hrArr.map(hr => `
+                            <div class="bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-1 rounded shadow-sm flex items-center gap-2 group">
+                                <span class="text-[11px] font-mono font-bold tracking-wide">${hr}</span>
+                                <button type="button" onclick="eliminarHojaDeRuta('${chofer._safeId}', '${isoCurr}', '${hr}'); event.stopPropagation();" class="text-indigo-400 hover:text-red-500 transition-colors" title="Eliminar N°">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                </button>
+                            </div>
+                        `).join('') : '<span class="text-[10px] font-bold text-indigo-300/80 italic">Sin datos cargados</span>'}
+                    </div>
+
+                    <div class="flex items-center gap-2 border-t border-indigo-100/60 pt-2 mt-1">
+                        <input type="text" id="hr-new-input-panel-${isoCurr}" maxlength="25" placeholder="Añadir N° (Ej: 384460/1)" class="w-full sm:w-48 text-center px-2 py-1.5 text-[11px] font-mono font-bold border border-indigo-200 rounded-md shadow-inner outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-300 transition-all text-indigo-900 bg-white" oninput="this.value = this.value.replace(/[^0-9\\/]/g, '');" onkeydown="if(event.key === 'Enter') { event.preventDefault(); agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel'); }">
+                        <button type="button" onclick="agregarNuevaHojaRuta('${chofer._safeId}', '${isoCurr}', 'panel')" class="px-4 py-1.5 text-[10px] font-black text-white bg-indigo-500 hover:bg-indigo-600 rounded-md transition-colors shadow-sm tracking-wider uppercase">Guardar</button>
                     </div>
                 </div>
             </div>`;
@@ -2268,48 +2297,80 @@ window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
     window.renderizarHistorialEventos(chofer.nom, startIso, endIso);
 };
 
-// 👉 NUEVO MÓDULO INTERACTIVO DE HOJA DE RUTA 
-window.agregarInputHR = function(isoStr, safeId) {
-    const wrapper = document.getElementById(`hr-container-${isoStr}`);
-    if (!wrapper) return;
-    const btnAñadir = wrapper.querySelector('button:last-child');
-    
-    const divContainer = document.createElement('div');
-    divContainer.className = "flex items-center relative group animate-[fadeIn_0.2s_ease-out]";
-   divContainer.innerHTML = `
-        <input type="text" maxlength="25" placeholder="Ej: 384460/1/2" class="hr-input-${isoStr} w-36 text-center px-2 py-1.5 text-xs font-mono font-bold border border-gray-300 rounded shadow-inner outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-indigo-900 bg-white" oninput="this.value = this.value.replace(/[^0-9\\/]/g, '');" onchange="guardarHojaDeRutaViaje('${safeId}', '${isoStr}')" onkeydown="if(event.key === 'Enter') { event.preventDefault(); this.blur(); }">
-        <button type="button" onclick="this.parentElement.remove(); guardarHojaDeRutaViaje('${safeId}', '${isoStr}');" class="absolute -right-2 -top-2 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 bg-white hover:bg-red-50 rounded-full shadow border border-red-100 w-5 h-5 flex items-center justify-center font-bold transition-all text-xs z-10">×</button>
-    `;
-    wrapper.insertBefore(divContainer, btnAñadir);
-    divContainer.querySelector('input').focus();
-};
+// 👉 NUEVA LÓGICA DE INTERFAZ OPTIMISTA PARA HOJAS DE RUTA (SEPARANDO VISTA DE EDICIÓN)
 
-window.guardarHojaDeRutaViaje = function(safeId, isoStr) {
-    const inputs = document.querySelectorAll(`.hr-input-${isoStr}`);
-    let valoresHR = [];
-    
-    inputs.forEach(inp => {
-        let val = inp.value.trim(); 
-        if (val !== "") valoresHR.push(val);
-    });
+window.agregarNuevaHojaRuta = function(safeId, isoStr, contexto) {
+    const inputEl = document.getElementById(`hr-new-input-${contexto}-${isoStr}`);
+    if (!inputEl) return;
+    let nuevoVal = inputEl.value.trim();
+    if (!nuevoVal) return;
 
     const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
     if(!chofer) return;
 
-    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
-
-    // 👉 1. ACTUALIZACIÓN OPTIMISTA: Modificamos la memoria local primero
     let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    
+    // 1. Inyectamos en memoria local (Caché del navegador)
     if (!viajesDetalleGlobal[nLimpio]) viajesDetalleGlobal[nLimpio] = {};
-    if (!viajesDetalleGlobal[nLimpio][isoStr]) viajesDetalleGlobal[nLimpio][isoStr] = { campo:0, liviano:0, euro:0, infiniaD:0 };
-    viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = valoresHR;
+    if (!viajesDetalleGlobal[nLimpio][isoStr]) viajesDetalleGlobal[nLimpio][isoStr] = { campo:0, liviano:0, euro:0, infiniaD:0, hoja_ruta: [] };
+    
+    let hrActuales = viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta || [];
+    if (!Array.isArray(hrActuales)) hrActuales = [];
 
-    // 👉 2. RE-RENDER INMEDIATO: Actualizamos la pantalla al instante (esto hace que la placa azul gane el tooltip de HR de inmediato sin cerrar el rango)
+    // Limpiamos los vacíos y agregamos el nuevo
+    hrActuales = hrActuales.filter(h => String(h).trim() !== "");
+    if (!hrActuales.includes(nuevoVal)) {
+        hrActuales.push(nuevoVal);
+    }
+    viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = hrActuales;
+
+    // 2. Limpieza de UI instantánea
+    inputEl.value = '';
+
+    // 3. Renderizamos el panel activo para que el Badge aparezca sin parpadear
+    ejecutarRenderLocalHR(safeId);
+
+    // 4. Disparamos a la Nube (Background)
+    enviarHRBackend(chofer, isoStr, hrActuales);
+};
+
+window.eliminarHojaDeRuta = function(safeId, isoStr, hrA_Borrar) {
+    const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
+    if(!chofer) return;
+
+    let nLimpio = String(chofer.nom).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    if (!viajesDetalleGlobal[nLimpio] || !viajesDetalleGlobal[nLimpio][isoStr]) return;
+    
+    let hrActuales = viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta || [];
+    
+    // 1. Filtrar memoria
+    hrActuales = hrActuales.filter(h => h !== hrA_Borrar && String(h).trim() !== "");
+    viajesDetalleGlobal[nLimpio][isoStr].hoja_ruta = hrActuales;
+
+    // 2. Renderizamos el panel activo
+    ejecutarRenderLocalHR(safeId);
+
+    // 3. Disparamos a la Nube
+    enviarHRBackend(chofer, isoStr, hrActuales);
+}
+
+// Función centralizada para repintar la UI activa
+function ejecutarRenderLocalHR(safeId) {
     if (vistaActual === 'individual') {
         mostrarDetalleConductor(safeId, true);
+    } else if (seleccionInicioIso && currentEndIso) {
+        let d1 = new Date(seleccionInicioIso + "T12:00:00"); 
+        let d2 = new Date(currentEndIso + "T12:00:00"); 
+        let start = d1 <= d2 ? seleccionInicioIso : currentEndIso; 
+        let end = d1 <= d2 ? currentEndIso : seleccionInicioIso; 
+        mostrarPanelAcciones(safeId, start, end);
     }
+}
 
-    // 👉 3. COMUNICACIÓN A LA NUBE (En segundo plano)
+// Función de comunicación con Google Apps Script
+function enviarHRBackend(chofer, isoStr, valoresHR) {
+    const usuarioLogueado = localStorage.getItem('usuarioActivo') || "Sesión Perdida";
+
     fetch(API_URL, {
         method: 'POST',
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -2323,14 +2384,14 @@ window.guardarHojaDeRutaViaje = function(safeId, isoStr) {
         })
     }).then(r => r.json()).then(res => {
         if (!res.success) {
-            showToast("Error al sincronizar en la nube.", "error");
+            showToast("Error al procesar la Hoja de Ruta en Servidor.", "error");
         } else {
-            showToast("Hoja de Ruta guardada en Planilla.", "success");
+            showToast("Planilla guardada correctamente.", "success");
         }
     }).catch(e => {
-        showToast("Error de red guardando Hoja de Ruta.", "error");
+        showToast("Error de red guardando Hoja de Ruta", "error");
     });
-};
+}
 
 window.guardarEstadoDesdeRango = function(safeId, startIso, endIso) {
         const est = document.getElementById(`quick-estado-${safeId}`).value;
