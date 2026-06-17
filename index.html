@@ -1936,6 +1936,53 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     }
 };
 
+    // ====================================================================
+// --- SELECCIÓN Y PINTADO DE RANGOS EN EL CALENDARIO ---
+// ====================================================================
+
+window.manejarSeleccionCalendario = function(isoStr, event, safeId) {
+    // Evita que el texto de la pantalla se seleccione accidentalmente al hacer Shift + Clic
+    window.getSelection().removeAllRanges(); 
+    
+    if (!seleccionInicioIso || !event.shiftKey) { 
+        // Si es un clic normal o el primer clic, selecciona solo ese día
+        seleccionInicioIso = isoStr; 
+        currentEndIso = isoStr; 
+        pintarCeldas(isoStr, isoStr); 
+        mostrarPanelAcciones(safeId, isoStr, isoStr); 
+    } else { 
+        // Si es Shift + Clic, calcula el inicio y fin correctos
+        let d1 = new Date(seleccionInicioIso + "T12:00:00"); 
+        let d2 = new Date(isoStr + "T12:00:00"); 
+        let start = d1 <= d2 ? seleccionInicioIso : isoStr; 
+        let end = d1 <= d2 ? isoStr : seleccionInicioIso; 
+        
+        currentEndIso = isoStr; 
+        pintarCeldas(start, end); 
+        mostrarPanelAcciones(safeId, start, end); 
+    }
+};
+
+window.pintarCeldas = function(startIso, endIso) {
+    let dStart = new Date(startIso + "T12:00:00"); 
+    let dEnd = new Date(endIso + "T12:00:00");
+    
+    document.querySelectorAll('.celda-calendario').forEach(el => { 
+        let cellDate = new Date(el.dataset.fecha + "T12:00:00"); 
+        
+        // Removemos clases previas de selección
+        el.classList.remove('seleccionada', 'brightness-110'); 
+        
+        // Aplicamos el "halo" (ring) a las celdas que caen dentro del rango seleccionado
+        if (cellDate >= dStart && cellDate <= dEnd) {
+            el.classList.add('seleccionada');
+            el.classList.add('brightness-110');
+        }
+    });
+};
+
+// ... (Aquí debajo ya iría tu "window.mostrarPanelAcciones = function(safeId, startIso, endIso) { ...")
+
 window.mostrarPanelAcciones = function(safeId, startIso, endIso) {
     const panel = document.getElementById('panel-acciones-rango');
     const chofer = datosGlobales.find(c => String(c._safeId) === String(safeId));
