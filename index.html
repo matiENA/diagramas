@@ -1955,12 +1955,7 @@ contenedor.innerHTML = html + getHTMLRestante(chofer, doc, hab, cert, apto, badg
             }, 50); // El delay garantiza que el motor del navegador ya pintó el DOM base
         }
     };
-    
-al inyetar las nuevas fucnioens rompe la funcinalida por lo uqe te paso el window,mostrar para que lo realices alli mismo; la separacion y confirmacion de lo guardado, 
-
-el fetch  se veia de esta manera:
-
-    // 4. Disparamos a la Nube (Background)
+       // 4. Disparamos a la Nube (Background)
     fetch(API_URL, {
         method: 'POST',
         headers: { "Content-Type": "text/plain;charset=utf-8" },
