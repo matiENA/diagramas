@@ -1607,6 +1607,7 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
 
     let datosDni = dnisGlobales[n];
     let dniDelChofer = datosDni ? (datosDni.dni || datosDni) : null;
+
     let datosChoferObj = (dniDelChofer ? telefonosGlobales[dniDelChofer] : null) || telefonosGlobales[n] || {};
 
     dniDelChofer = datosChoferObj.dni || dniDelChofer || 'Sin DNI';
@@ -1615,6 +1616,7 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
     let legajoChofer = datosChoferObj.legajo || '-';
     let mailChofer = datosChoferObj.email || 'Sin Email';
     let altaChofer = datosChoferObj.fechaAlta || '-';
+    
     let telChofer = datosChoferObj.telefono || (typeof telefonosGlobales[n] === 'string' ? telefonosGlobales[n] : null);
     let linkWspIndividual = '';
     let displayTel = 'Sin Teléfono';
@@ -1642,6 +1644,15 @@ window.mostrarDetalleConductor = function(safeId, mantenerSeleccion = false) {
 
     let diaRetornoObj = calcularRetorno(chofer.dias, fechaGlobalContexto);
     let diaRetornoIso = formatIsoShort(diaRetornoObj);
+
+    // 👉 SOLUCIÓN: Reincorporar la generación de las placas (badges) de vencimiento de documentos
+    let dEst = evaluarEstadoDoc(doc.ven, fBaseObj);
+    let hEst = evaluarEstadoDoc(hab.ven, fBaseObj);
+    let cEst = evaluarEstadoDoc(cert.ven, fBaseObj);
+
+    let badgeExam = dEst === 'VENCIDO' ? '<span class="text-[10px] text-red-600 bg-red-100 px-2 py-1 rounded font-bold border border-red-300">VENCIDO</span>' : dEst === 'POR_VENCER' ? '<span class="text-[10px] text-yellow-700 bg-yellow-100 px-2 py-1 rounded font-bold border border-yellow-300">POR VENCER</span>' : '<span class="text-[10px] text-green-700 bg-green-50 px-2 py-1 rounded font-bold border border-green-200">VIGENTE</span>';
+    let badgeLic = hEst === 'VENCIDO' ? '<span class="text-[10px] text-red-600 bg-red-100 px-2 py-1 rounded font-bold border border-red-300">VENCIDO</span>' : hEst === 'POR_VENCER' ? '<span class="text-[10px] text-yellow-700 bg-yellow-100 px-2 py-1 rounded font-bold border border-yellow-300">POR VENCER</span>' : '<span class="text-[10px] text-green-700 bg-green-50 px-2 py-1 rounded font-bold border border-green-200">VIGENTE</span>';
+    let badgeCert = cEst === 'VENCIDO' ? '<span class="text-[10px] text-red-600 bg-red-100 px-2 py-1 rounded font-bold border border-red-300">VENCIDO</span>' : cEst === 'POR_VENCER' ? '<span class="text-[10px] text-yellow-700 bg-yellow-100 px-2 py-1 rounded font-bold border border-yellow-300">POR VENCER</span>' : '<span class="text-[10px] text-green-700 bg-green-50 px-2 py-1 rounded font-bold border border-green-200">VIGENTE</span>';
 
     let fCicloInicio = new Date(fBaseObj.getFullYear(), fBaseObj.getMonth() - 1, 26, 12, 0, 0);
     let fCicloFin = new Date(fBaseObj.getFullYear(), fBaseObj.getMonth(), 25, 12, 0, 0);
