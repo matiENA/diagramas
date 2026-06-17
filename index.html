@@ -2863,29 +2863,34 @@ function renderizarVistaMetricas(container) {
 
 // 3. Filtra la lista del dropdown mientras el usuario escribe
 window.filtrarDropdownIndividual = function() {
-        const input = document.getElementById('input-busqueda-individual');
-        const term = input.value.toLowerCase().trim();
-        const btnClear = document.getElementById('btn-clear-individual');
-        if (term.length > 0) btnClear.classList.remove('hidden'); else btnClear.classList.add('hidden');
-        
-        const filtrados = datosGlobales.filter(c => {
-            // Normalización estricta para asegurar que el cruce con el DNI nunca falle
-            let searchKey = String(c.nom || '').toLowerCase().trim();
-            let nKey = searchKey.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
-            
-            let datosDni = dnisGlobales[nKey];
-            let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
+    const input = document.getElementById('input-busqueda-individual');
+    if (!input) return;
+    const term = input.value.toLowerCase().trim();
+    
+    // Normalizamos el término para que encuentre resultados aunque escriban sin tilde
+    const termNorm = term.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+    const btnClear = document.getElementById('btn-clear-individual');
+    if (btnClear) {
+        if (term.length > 0) btnClear.classList.remove('hidden'); 
+        else btnClear.classList.add('hidden');
+    }
+    
+    const filtrados = datosGlobales.filter(c => {
+        let nKey = String(c.nom || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+        let datosDni = dnisGlobales[nKey];
+        let dniString = datosDni ? String(datosDni.dni || datosDni).toLowerCase() : "";
 
-            // Buscamos coincidencia en nombre, UTE, servicio o DNI
-            return searchKey.includes(term) || 
-                   String(c._safeId || '').toLowerCase().includes(term) || 
-                   (c.srv || '').toLowerCase().includes(term) ||
-                   dniString.includes(term); 
-        });
-        
-        renderizarOpcionesIndividual(filtrados);
-        abrirDropdownIndividual();
-    };
+        // 👉 SOLUCIÓN: Restaurada la búsqueda por c.n_ute (Legajo)
+        return nKey.includes(termNorm) || 
+               String(c.n_ute || '').toLowerCase().includes(termNorm) || 
+               String(c.srv || '').toLowerCase().includes(termNorm) ||
+               dniString.includes(termNorm); 
+    });
+    
+    renderizarOpcionesIndividual(filtrados);
+    abrirDropdownIndividual();
+};
 
     // 4. Selecciona un conductor de la lista del dropdown
 window.seleccionarConductorIndividual = function(safeId, nombre) {
