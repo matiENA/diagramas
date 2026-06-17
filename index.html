@@ -795,15 +795,13 @@ async function cargarDatosDesdeCache() {
             aptosMedicos:   v => aptosGlobales = normalize(v),
             viajesCampo:    v => viajesGlobales = normalize(v),
             vencimientosObj: v => window.vencimientosCacheGlobal = v, 
-            nuevaSeccionViajes: v => {
-                viajesDetalleGlobal = {};
-                if(Array.isArray(v)){
-                    v.forEach(viaje => {
-                        let nLimpio = normalizarNombreTD(viaje.chofer);
-                        if(!viajesDetalleGlobal[nLimpio]) viajesDetalleGlobal[nLimpio] = {};
-                        if(!viajesDetalleGlobal[nLimpio][viaje.fecha]) {
-                            viajesDetalleGlobal[nLimpio][viaje.fecha] = { campo: 0, liviano: 0, euro: 0, infiniaD: 0, hoja_ruta: [], dominio: [] };
-                        }
+           nuevaSeccionViajes: v => {
+                if (v && typeof v === 'object' && !Array.isArray(v)) {
+                    viajesDetalleGlobal = v;
+                } else {
+                    viajesDetalleGlobal = {};
+                }
+            },
                         let target = viajesDetalleGlobal[nLimpio][viaje.fecha];
                         target.campo += (parseFloat(viaje.campo) || 0);
                         target.liviano += (parseFloat(viaje.liviano) || 0);
@@ -889,13 +887,11 @@ function sincronizacionSilenciosa() {
 
             // 4. Actualizar Memoria de Viajes Detallados
             viajesDetalleGlobal = {};
-            if (Array.isArray(data.nuevaSeccionViajes)) {
-                data.nuevaSeccionViajes.forEach(viaje => {
-                    let nLimpio = normalizarNombreTD(viaje.chofer);
-                    if(!viajesDetalleGlobal[nLimpio]) viajesDetalleGlobal[nLimpio] = {};
-                    if(!viajesDetalleGlobal[nLimpio][viaje.fecha]) {
-                        viajesDetalleGlobal[nLimpio][viaje.fecha] = { campo: 0, liviano: 0, euro: 0, infiniaD: 0, hoja_ruta: [], dominio: [] };
-                    }
+            if (data.nuevaSeccionViajes && typeof data.nuevaSeccionViajes === 'object' && !Array.isArray(data.nuevaSeccionViajes)) {
+                viajesDetalleGlobal = data.nuevaSeccionViajes;
+            } else {
+                viajesDetalleGlobal = {};
+            }
                     let target = viajesDetalleGlobal[nLimpio][viaje.fecha];
                     target.campo += (parseFloat(viaje.campo) || 0);
                     target.liviano += (parseFloat(viaje.liviano) || 0);
