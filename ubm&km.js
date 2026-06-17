@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * EXTRACCIÓN MASIVA: KILOMETRAJE + VIAJES CAMPO + HOJAS DE RUTA
- * (Para uso con Triggers Temporales o Botón Manual)
+ * (Arquitectura de Diccionario Puro para evitar Datos Fantasma)
  * ============================================================================
  */
 
@@ -11,11 +11,11 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
 
   let mapaKms = {};
   let viajesAgrupados = {};
-  let arrayNuevaSeccion = []; 
+  let viajesDetalleObj = {}; // 👉 NUEVO: Ahora es un Objeto, no un Array
   
   let cacheSheet = ssMaestro.getSheetByName("API_CACHE_BASICO");
   
-  // --- 1. LECTURA Y PRESERVACIÓN DE CACHÉ EXISTENTE (Merge) ---
+  // --- 1. LECTURA Y PRESERVACIÓN DE CACHÉ EXISTENTE (Merge Inteligente) ---
   if (hacerMerge && cacheSheet) {
     // A) Preservar api_km clásico
     try {
@@ -38,7 +38,7 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
       }
     } catch(e) { console.warn("No se pudo procesar merge de api_km."); }
 
-    // B) PRESERVAR EL HISTORIAL DE LA FILA 12 (Detalle de Viajes Nueva Sección)
+    // B) PRESERVAR EL HISTORIAL DE LA FILA 12 (Purga Temporal)
     try {
       if (cacheSheet.getMaxRows() < 12) cacheSheet.insertRowsAfter(cacheSheet.getMaxRows(), 12 - cacheSheet.getMaxRows());
       let lastCol = cacheSheet.getLastColumn() || 1;
@@ -47,14 +47,25 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
       
       if (jsonNuevaSeccionRaw) {
         let registrosAnteriores = JSON.parse(jsonNuevaSeccionRaw);
-        if (Array.isArray(registrosAnteriores)) {
-          registrosAnteriores.forEach(reg => {
-            let fReg = new Date(reg.fecha + "T12:00:00");
-            // Si el registro es viejo (fuera de ventana temporal), lo preservamos
-            if (fReg < minDate || fReg > maxDate) {
-              arrayNuevaSeccion.push(reg);
+        
+        // Verificamos que ya tenga el formato de objeto nuevo
+        if (registrosAnteriores && typeof registrosAnteriores === 'object' && !Array.isArray(registrosAnteriores)) {
+            viajesDetalleObj = registrosAnteriores;
+            
+            // 👉 MAGIA PURA: Borramos de la memoria todo lo que caiga en la ventana temporal actual.
+            // Así, si borraste una hoja de ruta en el Excel, se borra del caché para siempre.
+            for (let chofer in viajesDetalleObj) {
+                for (let fecha in viajesDetalleObj[chofer]) {
+                    let fReg = new Date(fecha + "T12:00:00");
+                    if (fReg >= minDate && fReg <= maxDate) {
+                        delete viajesDetalleObj[chofer][fecha]; 
+                    }
+                }
+                // Limpieza de choferes que se quedaron sin viajes en el historial
+                if (Object.keys(viajesDetalleObj[chofer]).length === 0) {
+                    delete viajesDetalleObj[chofer];
+                }
             }
-          });
         }
       }
     } catch(e) { console.warn("No se pudo realizar merge de la fila 12 de viajes detallados."); }
@@ -108,9 +119,9 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
     let euroRaw     = row[4];   // Col E
     let campoRaw    = row[5];   // Col F
     let infiniaDRaw = row[7];   // Col H
-    let kmBackupRaw = row[8];   // Col I (Respaldo viejo)
-    let kmBaseRaw   = row[16];  // Col Q (Kilometros Totales)
-    let hojaRutaRaw = row[19];  // Col T (Hoja de Ruta)
+    let kmBackupRaw = row[8];   // Col I 
+    let kmBaseRaw   = row[16];  // Col Q 
+    let hojaRutaRaw = row[19];  // Col T
 
     let nOriginal = String(nombreRaw).trim().toLowerCase(); 
     if (!nOriginal) continue;
@@ -120,7 +131,7 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
     
     if (!dObj || isNaN(dObj.getTime())) continue;
 
-    // Solo extraemos si la fecha entra en la ventana requerida
+    // Solo extraemos si la fecha entra en la ventana
     if (dObj >= minDate && dObj <= maxDate) {
       
       // A) KILÓMETROS GLOBALES
@@ -146,7 +157,6 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
 
       if (campoNum > 0 || livianoNum > 0 || euroNum > 0 || infiniaDNum > 0 || hojaStr !== "") {
           
-          // Sumatoria mensual (Fila 7)
           let mesAnio = `${mesesAbrev[dObj.getMonth()]}-${String(dObj.getFullYear()).slice(-2)}`;
           if (!viajesAgrupados[nombreNorm]) viajesAgrupados[nombreNorm] = {};
           if (!viajesAgrupados[nombreNorm][mesAnio]) {
@@ -157,25 +167,38 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
           viajesAgrupados[nombreNorm][mesAnio].euro += euroNum;
           viajesAgrupados[nombreNorm][mesAnio].infiniaD += infiniaDNum;
 
-          // Detalle diario (Fila 12)
-          arrayNuevaSeccion.push({
-              fecha: dObj.toISOString().split('T')[0], 
-              dominio: String(dominioRaw || "").trim(),
-              chofer: String(nombreRaw || "").trim(),
-              liviano: livianoNum,
-              euro: euroNum,
-              campo: campoNum,
-              infiniaD: infiniaDNum,
-              hoja_ruta: hojaStr !== "" ? hojaStr.split(',').map(s => s.trim()) : []
-          });
+          let isoStr = dObj.toISOString().split('T')[0];
+
+          // 👉 NUEVA SECCIÓN: Asignación limpia al Diccionario
+          if (!viajesDetalleObj[nombreNorm]) viajesDetalleObj[nombreNorm] = {};
+          
+          // Si hay múltiples filas en la planilla para un chofer el mismo día, se fusionan
+          if (!viajesDetalleObj[nombreNorm][isoStr]) {
+              viajesDetalleObj[nombreNorm][isoStr] = {
+                  dominio: String(dominioRaw || "").trim(),
+                  liviano: 0, euro: 0, campo: 0, infiniaD: 0,
+                  hoja_ruta: []
+              };
+          }
+          
+          let target = viajesDetalleObj[nombreNorm][isoStr];
+          target.liviano += livianoNum;
+          target.euro += euroNum;
+          target.campo += campoNum;
+          target.infiniaD += infiniaDNum;
+
+          if (hojaStr !== "") {
+              let arrHojas = hojaStr.split(',').map(s => s.trim()).filter(Boolean);
+              arrHojas.forEach(h => {
+                  if (!target.hoja_ruta.includes(h)) target.hoja_ruta.push(h);
+              });
+          }
           contadorExtraidos++;
       }
     }
   }
 
   // --- 4. ESCRITURA ATÓMICA EN CACHÉ ---
-  
-  // Guardar api_km clásico
   let hojaKm = ssMaestro.getSheetByName('api_km');
   if (!hojaKm) { hojaKm = ssMaestro.insertSheet('api_km'); hojaKm.hideSheet(); }
   hojaKm.clearContents(); 
@@ -185,10 +208,9 @@ function procesarKilometrosYViajesCore(minDate, maxDate, hacerMerge = false) {
   for (let i = 0; i < kmStr.length; i += 40000) { kmChunks.push(["'" + kmStr.substring(i, i + 40000)]); }
   if (kmChunks.length > 0) hojaKm.getRange(1, 1, kmChunks.length, 1).setValues(kmChunks);
 
-  // Guardar en API_CACHE_BASICO
   if (cacheSheet && typeof escribirChunksEnFila === 'function') {
     escribirChunksEnFila(cacheSheet, 7, JSON.stringify(viajesAgrupados));
-    escribirChunksEnFila(cacheSheet, 12, JSON.stringify(arrayNuevaSeccion)); 
+    escribirChunksEnFila(cacheSheet, 12, JSON.stringify(viajesDetalleObj)); // 👉 Guardamos el Objeto Limpio
   }
   
   ssMaestro.toast(`Proceso OK. ${contadorExtraidos} viajes detallados cacheados.`, "✅ Éxito");
@@ -213,7 +235,7 @@ function ubmkm() {
 /**
  * ============================================================================
  * EXTRACCIÓN QUIRÚRGICA: onEdit PARA HOJA DE RUTA
- * (Captura modificaciones en la Columna T y actualiza EXCLUSIVAMENTE la Fila 12)
+ * (Actualizado para trabajar con Diccionarios de forma instantánea)
  * ============================================================================
  */
 
@@ -225,10 +247,8 @@ function alEditarKilometros(e) {
   const sheet = e.source.getActiveSheet();
   const nombreHoja = sheet.getName();
 
-  // 👉 Columna T (20): N° Hoja de Ruta. Ignoramos la fila 1 (encabezados)
   if (fila >= 2 && columna === 20 && nombreHoja.toUpperCase() === 'KM') {
     try {
-      // 1. SOLUCIÓN AL CONTEXTO: Definimos explícitamente la planilla Maestra
       const ID_PLANILLA_MAESTRA = '1eQ9Y5diL5fwxYTxvseNgZJFbX-lSUQ13axbp3cLiqPc'; 
       
       let ssMaestro;
@@ -236,28 +256,23 @@ function alEditarKilometros(e) {
       catch (err) { ssMaestro = SpreadsheetApp.getActiveSpreadsheet(); }
 
       const cacheSheet = ssMaestro.getSheetByName("API_CACHE_BASICO");
-      if (!cacheSheet) { console.error("No se encontró API_CACHE_BASICO. Abortando."); return; }
+      if (!cacheSheet) return;
 
-      // 2. Extraemos los datos de la fila editada en el Sheet de KMs
       const rangoFila = sheet.getRange(fila, 1, 1, 20).getValues()[0];
-      const dominioRaw  = rangoFila[0];   // Col A
-      const fechaRaw    = rangoFila[1];   // Col B
-      const nombreRaw   = rangoFila[2];   // Col C
+      const dominioRaw  = rangoFila[0];   
+      const fechaRaw    = rangoFila[1];   
+      const nombreRaw   = rangoFila[2];   
       const livianoNum  = parseFloat(String(rangoFila[3] || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
       const euroNum     = parseFloat(String(rangoFila[4] || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
       const campoNum    = parseFloat(String(rangoFila[5] || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
       const infiniaDNum = parseFloat(String(rangoFila[7] || '').replace(/,/g, '.').replace(/[^0-9.-]/g, '')) || 0;
-      
-      // SOLUCIÓN A E.VALUE: Leemos la celda real
       const nuevoValorHR = String(rangoFila[19] || "").trim();
 
       if (!nombreRaw || !fechaRaw) return;
 
-      // Normalización de claves idéntica al FrontEnd
       const normalizar = (n) => String(n).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
       const choferNorm = normalizar(nombreRaw);
 
-      // Parseo seguro de fecha ISO para sincronizar con la Fila 12
       let fechaIso = "";
       if (fechaRaw instanceof Date) {
         let tempDate = new Date(fechaRaw.getTime() - (fechaRaw.getTimezoneOffset() * 60000));
@@ -271,45 +286,39 @@ function alEditarKilometros(e) {
       }
       if (!fechaIso) return;
 
-      // 3. Leemos la Fila 12 actual de API_CACHE_BASICO
       if (cacheSheet.getMaxRows() < 12) cacheSheet.insertRowsAfter(cacheSheet.getMaxRows(), 12 - cacheSheet.getMaxRows());
       let lastCol = cacheSheet.getLastColumn() || 1;
       let dataFila12 = cacheSheet.getRange(12, 1, 1, lastCol).getValues()[0];
       let jsonRaw = dataFila12.filter(String).map(c => String(c || "").replace(/^'/, "")).join("");
       
-      let arrayViajes = [];
+      let viajesDetalleObj = {};
       if (jsonRaw) {
-        try { arrayViajes = JSON.parse(jsonRaw); } catch(err) { arrayViajes = []; }
+        try { 
+            let parsed = JSON.parse(jsonRaw); 
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) viajesDetalleObj = parsed;
+        } catch(err) {}
       }
-      if (!Array.isArray(arrayViajes)) arrayViajes = [];
 
-      // 4. Buscamos de forma quirúrgica si ya existe el viaje detallado en el caché
-      let idx = arrayViajes.findIndex(viaje => normalizar(viaje.chofer) === choferNorm && viaje.fecha === fechaIso);
       let hojasParseadas = nuevoValorHR !== "" ? nuevoValorHR.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-      if (idx > -1) {
-        // Si ya existía, actualizamos ÚNICAMENTE su listado de Hojas de Ruta
-        arrayViajes[idx].hoja_ruta = hojasParseadas;
-      } else {
-        // Si no existía, inyectamos el nuevo objeto completo de forma nativa
-        arrayViajes.push({
-          fecha: fechaIso,
-          dominio: String(dominioRaw || "").trim(),
-          chofer: String(nombreRaw || "").trim(),
-          liviano: livianoNum,
-          euro: euroNum,
-          campo: campoNum,
-          infiniaD: infiniaDNum,
-          hoja_ruta: hojasParseadas
-        });
+      // 👉 Inyectamos limpiamente como Diccionario
+      if (!viajesDetalleObj[choferNorm]) viajesDetalleObj[choferNorm] = {};
+      
+      if (!viajesDetalleObj[choferNorm][fechaIso]) {
+          viajesDetalleObj[choferNorm][fechaIso] = {
+              dominio: String(dominioRaw || "").trim(),
+              liviano: livianoNum,
+              euro: euroNum,
+              campo: campoNum,
+              infiniaD: infiniaDNum,
+              hoja_ruta: []
+          };
       }
+      viajesDetalleObj[choferNorm][fechaIso].hoja_ruta = hojasParseadas;
 
-      // 5. Volcado ultra veloz en chunks horizontales sobre la Fila 12 (Sin tocar fila 7 ni api_km)
       if (typeof escribirChunksEnFila === 'function') {
-        escribirChunksEnFila(cacheSheet, 12, JSON.stringify(arrayViajes));
-        sheet.getParent().toast(`Hoja Ruta [${hojasParseadas.join(',')}] sincronizada en servidor`, "⚡ Caché Actualizado");
-      } else {
-        console.error("La función escribirChunksEnFila no está disponible en este contexto.");
+        escribirChunksEnFila(cacheSheet, 12, JSON.stringify(viajesDetalleObj));
+        sheet.getParent().toast(`Hoja Ruta [${hojasParseadas.join(',')}] sincronizada`, "⚡ Caché Actualizado");
       }
 
     } catch (error) {
