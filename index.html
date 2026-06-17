@@ -454,6 +454,14 @@ document.addEventListener('click', (e) => {
 });
 
     // --- [TAG: ROUTER PRINCIPAL] ---
+
+    window.normalizarNombreTD = function(nom) {
+        return String(nom || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+    };
+    function normalizarNombreTD(nom) {
+        return window.normalizarNombreTD(nom);
+    }
+    
     function cambiarVistaPrincipal(vista) {
         vistaActual = vista;
         const btnClasses = {
